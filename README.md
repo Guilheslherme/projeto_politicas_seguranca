@@ -21,14 +21,14 @@
 <!-- SUMÁRIO -->
 ## Sobre o Projeto
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur vel sapien pellentesque, venenatis ex non, egestas neque. In elementum augue elit, non varius elit condimentum sit amet. Quisque metus justo.
+<h1>PROJECT IN SIGHT</h1>
+<h3>Criação de um webSite para a divulgação de cursos de Terceiros</h3>
 
-Um pouco de tópicos:
-* Topico 1
-* Topico 2
-* Topico 3
+O projeto de Políticas de Informação aborda o crescimento acelerado da educação a distância (EAD) tendo como objetivo desenvolver e estabelecer uma conexão segura de uma plataforma web voltada para a centralização, divulgação e facilitação do acesso à educação online. O sistema facilita o acesso a conteúdo educacionais, permitindo que usuários realizem cadastro, login e que os usuarios naveguem por um catálogo diversificado de cursos oferecidos por instituições de terceiros, tendo instituições parceiras com nosso projeto, assim tendo uma visibilidade maior, gerando receita e mantendo o projeto ativo, além de ser desenvolvido em conformidade normativa. 
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur vel sapien pellentesque, venenatis ex non, egestas neque. In elementum augue elit, non varius elit condimentum sit amet. Quisque metus justo.
+O público-alvo da plataforma é constituído por estudantes, recém-formados e profissionais que buscam qualificação continua ou que estão em busca de uma transição ou começo de carreira por meio da educação a distância, além das grandes instituições que estão dispostas a serem parceiras do projeto, prezando pela visibilidade e engajamento de seus cursos e sites, ajudando os alunos a adquirirem mais conhecimentos e as devidas horas complementares. 
+
+O Foco deste projeto é direcionado a segurança de informação, assegurando a proteção dos dados sensíveis coletados, que exige uma plataforma com segurança de senhas criptografada e com validações do lado do usuário. Com a premissa de preservar a integridade, confiabilidade e privacidade dos dados das pessoas que necessitam deste amparo institucional. Além disso, o sistema prevê uma forma onde o usuário poderá revogar o acesso aos seus dados a qualquer momento, desta forma, alinhando as práticas de transparência e legislação exigidas pela Lei Geral de Proteção de Dados Pessoais (LGPD). 
 
 ### Tecnologias Utilizadas
 
