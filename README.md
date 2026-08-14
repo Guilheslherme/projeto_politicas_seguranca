@@ -21,8 +21,8 @@
 <!-- SUMÁRIO -->
 ## Sobre o Projeto
 
-<h1>PROJECT IN SIGHT</h1>
-<h3>Criação de um webSite para a divulgação de cursos de Terceiros</h3>
+<h3>PROJECT IN SIGHT</h3>
+<h4>Criação de um webSite para a divulgação de cursos de Terceiros</h4>
 
 O projeto de Políticas de Informação aborda o crescimento acelerado da educação a distância (EAD) tendo como objetivo desenvolver e estabelecer uma conexão segura de uma plataforma web voltada para a centralização, divulgação e facilitação do acesso à educação online. O sistema facilita o acesso a conteúdo educacionais, permitindo que usuários realizem cadastro, login e que os usuarios naveguem por um catálogo diversificado de cursos oferecidos por instituições de terceiros, tendo instituições parceiras com nosso projeto, assim tendo uma visibilidade maior, gerando receita e mantendo o projeto ativo, além de ser desenvolvido em conformidade normativa. 
 
