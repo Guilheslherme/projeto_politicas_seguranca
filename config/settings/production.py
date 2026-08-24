@@ -20,3 +20,12 @@ SECURE_HSTS_PRELOAD = True
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
+
+# WhiteNoise comprime os arquivos estaticos e adiciona um hash ao nome,
+# permitindo cache longo no navegador sem risco de servir versao antiga.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    },
+}
