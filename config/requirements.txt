@@ -1,0 +1,20 @@
+# Framework
+Django>=5.2,<6.0
+
+# Hash de senhas - Argon2id (requisitos 1.1 a 1.4)
+argon2-cffi>=25.1.0
+
+# Autenticacao de dois fatores - TOTP (requisitos 1.5 e 1.6)
+django-otp>=1.7.0
+qrcode>=8.2
+Pillow>=12.0.0
+
+# Protecao contra forca bruta (requisito 1.11)
+django-axes>=8.3.0
+
+# Configuracao por variaveis de ambiente
+python-dotenv>=1.2.0
+
+# Deploy (Render)
+gunicorn>=26.0.0
+whitenoise>=6.12.0
