@@ -1,3 +1,7 @@
+![CONTRIBUIDOR](https://img.shields.io/github/contributors/guilheslherme/projeto_politicas_seguranca.svg?style=for-the-badge)
+![license-shield](https://img.shields.io/github/license/guilheslherme/projeto_politicas_seguranca.svg?style=for-the-badge)
+
+
 # Health In Sight
 
 **Portal de divulgação de informações confiáveis sobre saúde**
