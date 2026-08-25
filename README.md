@@ -149,7 +149,7 @@ O site fica em `http://127.0.0.1:8000`. Variáveis sensíveis são lidas de um a
 
 - Guilherme da Silva Bonifácio — [@Guilheslherme](https://github.com/Guilheslherme)
 - Cassiano Jesus da Silva — [@Ashketchup13](https://github.com/Ashketchup13)
-- Yan Baumgarten Costa
+- Yan Baumgarten Costa - [@Baumgarten1801](https://github.com/Baumgarten1801)
 
 ---
 
