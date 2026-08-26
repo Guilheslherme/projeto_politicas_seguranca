@@ -60,12 +60,9 @@ Os dados pessoais efetivamente tratados são apenas os necessários à autentica
 ```
 projeto_politicas_seguranca/
 ├── config/              configuração do projeto
-│   ├── settings/
-│   │   ├── base.py      configurações comuns
-│   │   ├── development.py
-│   │   └── production.py  HTTPS obrigatório, HSTS
-│   ├── urls.py
-│   └── wsgi.py
+│   ├── settings.py      configurações
+│   ├── urls.py          rotas principais
+│   └── wsgi.py          entrada em produção
 ├── apps/
 │   ├── accounts/        autenticação, credenciais, 2FA e sessões
 │   ├── catalog/         conteúdos de saúde, áreas e fontes parceiras
@@ -78,7 +75,7 @@ projeto_politicas_seguranca/
 └── requirements.txt
 ```
 
-O `manage.py` carrega as configurações de desenvolvimento e o `wsgi.py` as de produção, de modo que `DEBUG = True` nunca chega ao servidor.
+As configurações ficam em `config/settings.py`.
 
 ---
 
@@ -149,7 +146,7 @@ O site fica em `http://127.0.0.1:8000`. Variáveis sensíveis são lidas de um a
 
 - Guilherme da Silva Bonifácio — [@Guilheslherme](https://github.com/Guilheslherme)
 - Cassiano Jesus da Silva — [@Ashketchup13](https://github.com/Ashketchup13)
-- Yan Baumgarten Costa -
+- Yan Baumgarten Costa — [@Baumgarten1801](https://github.com/Baumgarten1801)
 
 ---
 
