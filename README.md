@@ -35,7 +35,7 @@ Os dados pessoais efetivamente tratados são apenas os necessários à autentica
 | Nome completo | Identificação na interface |
 | E-mail | Login, recuperação de senha, avisos da conta |
 | Senha | Autenticação — armazenada apenas como hash Argon2id |
-| Segredo do 2FA | Validação do segundo fator — cifrado em repouso |
+| Segredo do 2FA | Validação do segundo fator  |
 | IP e data/hora de acesso | Segurança e rastreabilidade |
 | Registro de consentimento | Data, versão do termo e finalidade aceita |
 
@@ -149,7 +149,7 @@ O site fica em `http://127.0.0.1:8000`. Variáveis sensíveis são lidas de um a
 
 - Guilherme da Silva Bonifácio — [@Guilheslherme](https://github.com/Guilheslherme)
 - Cassiano Jesus da Silva — [@Ashketchup13](https://github.com/Ashketchup13)
-- Yan Baumgarten Costa
+- Yan Baumgarten Costa -
 
 ---
 
