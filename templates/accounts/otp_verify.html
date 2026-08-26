@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Verificacao em duas etapas{% endblock %}
+
+{% block content %}
+<div class="card card-narrow">
+  <h1>Verificacao em duas etapas</h1>
+  <p class="muted">
+    Etapa 2 de 2 &mdash; Digite o código de 6 digitos que aparecem no autenticador
+    autenticador para <strong>{{ email }}</strong>.
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.token }}
+    {{ form.token.errors }}
+    <button type="submit" class="btn-primary block">Verificar</button>
+  </form>
+
+  <p class="muted small">
+    Voce ainda não esta autenticado: a sessão so e criada apos a validação
+    deste código.
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Entrar | Health In Sight{% endblock %}
+
+{% block content %}
+<div class="card card-narrow">
+  <h1>Entrar</h1>
+  <p class="muted">Etapa 1 de 2 &mdash; e-mail e senha.</p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert error">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <label for="{{ form.username.id_for_label }}">E-mail</label>
+    {{ form.username }}
+    {{ form.username.errors }}
+
+    <label for="{{ form.password.id_for_label }}">Senha</label>
+    {{ form.password }}
+    {{ form.password.errors }}
+
+    <button type="submit" class="btn-primary block">Continuar</button>
+  </form>
+</div>
+{% endblock %}

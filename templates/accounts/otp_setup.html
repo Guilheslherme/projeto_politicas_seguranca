@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Ativar verificação em duas etapas{% endblock %}
+
+{% block content %}
+<div class="card card-narrow">
+  <h1>Ativar verificaçãoo em duas etapas</h1>
+
+  <ol class="steps">
+    <li>Instale um aplicativo de autentifição.</li>
+    <li>Escaneie o QR code abaixo.</li>
+    <li>Digite o código de 6 digitos para confirmar.</li>
+  </ol>
+
+  <img class="qr" src="{{ qr_data_uri }}" alt="QR code do segredo TOTP">
+
+  <details>
+    <summary>Não consigo escanear o QR code</summary>
+    <p class="mono break">{{ secret_url }}</p>
+  </details>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.token }}
+    {{ form.token.errors }}
+    <button type="submit" class="btn-primary block">Confirmar e ativar</button>
+  </form>
+</div>
+{% endblock %}

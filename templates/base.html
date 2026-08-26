@@ -1,0 +1,41 @@
+{% load static %}<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Health In Sight{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{% url 'home' %}">Health In Sight</a>
+    <nav>
+      {% if user.is_authenticated %}
+        <a href="{% url 'accounts:profile' %}">Minha conta</a>
+        <form action="{% url 'accounts:logout' %}" method="post" class="inline-form">
+          {% csrf_token %}
+          <button type="submit" class="link-button">Sair</button>
+        </form>
+      {% else %}
+        <a href="{% url 'accounts:login' %}">Entrar</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main class="container">
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+          <li class="message {{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p>Health In Sight &mdash; informação confiável sobre saúde.</p>
+    <p class="small">Este conteúdo não substitui a avaliação de um profissional de saúde.</p>
+  </footer>
+</body>
+</html>
