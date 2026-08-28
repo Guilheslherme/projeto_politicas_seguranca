@@ -1,13 +1,16 @@
 from django.urls import path
+
 from . import views
 
-app_name = 'accounts'
+app_name = "accounts"
 
 urlpatterns = [
-    path('login/', views.login_view, name='login'),
-    path('logout/', views.logout_view, name='logout'),
-    path('profile/', views.profile_view, name='profile'),
-    path('otp/setup/', views.otp_setup_view, name='otp_setup'),
-    path('otp/verify/', views.otp_verify_view, name='otp_verify'),
-    path('otp/disable/', views.otp_disable_view, name='otp_disable'),
+    path('register/', views.register_view, name='register'),
+    path("entrar/", views.TwoFactorLoginView.as_view(), name="login"),
+    path("sair/", views.SecureLogoutView.as_view(), name="logout"),
+    path("perfil/", views.profile, name="profile"),
+    # Segunda etapa da autenticacao (requisito 1.6)
+    path("verificacao/", views.otp_verify, name="otp_verify"),
+    path("verificacao/ativar/", views.otp_setup, name="otp_setup"),
+    path("verificacao/desativar/", views.otp_disable, name="otp_disable"),
 ]
