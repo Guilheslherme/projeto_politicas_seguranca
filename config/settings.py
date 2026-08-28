@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
+from datetime import timedelta
 
 from dotenv import load_dotenv
 
@@ -198,3 +199,31 @@ if not DEBUG:
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
         },
     }
+
+
+  # ---------------------------------------------------------------------------
+# Autenticacao em duas etapas (requisitos 1.5 e 1.6)
+# ---------------------------------------------------------------------------
+OTP_TOTP_ISSUER = "Health In Sight"
+
+# Atraso progressivo apos codigos invalidos, para dificultar tentativa em massa.
+OTP_TOTP_THROTTLE_FACTOR = 1
+
+# Tempo maximo entre a senha correta e a validacao do codigo.
+TWO_FACTOR_PENDING_TIMEOUT = timedelta(minutes=5)
+
+# ---------------------------------------------------------------------------
+# Sessoes (requisitos 1.9 e 1.10)
+# ---------------------------------------------------------------------------
+SESSION_COOKIE_AGE = 900          # 15 minutos
+SESSION_SAVE_EVERY_REQUEST = True  # renova a cada requisicao (expiracao deslizante)
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_HTTPONLY = True     # invisivel para JavaScript, mitiga roubo por XSS
+SESSION_COOKIE_SAMESITE = "Lax"    # mitiga CSRF
+
+# ---------------------------------------------------------------------------
+# Para onde o Django redireciona
+# ---------------------------------------------------------------------------
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "accounts:profile"
+LOGOUT_REDIRECT_URL = "home"
