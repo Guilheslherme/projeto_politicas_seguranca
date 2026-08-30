@@ -50,7 +50,7 @@ from .models import User
 
 
 class RegistrationForm(UserCreationForm):
-    """Cadastro de novo usuario, com aceite explicito da politica (requisito 4.4)."""
+    """Cadastro de novo usuario. Aceita apenas e-mail e nome completo."""
 
     email = forms.EmailField(
         label="E-mail",
