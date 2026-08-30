@@ -11,8 +11,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -22,9 +22,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "minha chave gerada para desenvolvimento")
 
@@ -33,7 +30,7 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
-
+# O Render informa o endereço público do serviço nesta variável.
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
@@ -49,13 +46,12 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-        # Bibliotecas de terceiros
+    # Bibliotecas de terceiros
     "django_otp",
     "django_otp.plugins.otp_totp",
     "django_otp.plugins.otp_static",
 
     # Aplicativos do projeto
-
     "apps.accounts",
     "apps.catalog",
     "apps.privacy",
@@ -63,35 +59,35 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
+    "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django_otp.middleware.OTPMiddleware",
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = 'config.urls'
+ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
+WSGI_APPLICATION = "config.wsgi.application"
 
 
 # Database
@@ -112,7 +108,7 @@ DATABASES = {
     }
 }
 
-# O Aiven exige conexao cifrada (requisitos 3.1 e 3.4).
+# O Aiven exige conexão cifrada (requisitos 3.1 e 3.4).
 DB_SSL_CA = os.environ.get("DB_SSL_CA", "")
 if DB_SSL_CA:
     DATABASES["default"]["OPTIONS"]["ssl"] = {"ca": str(BASE_DIR / DB_SSL_CA)}
@@ -123,17 +119,17 @@ if DB_SSL_CA:
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-        {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-        'OPTIONS': {'min_length': 10},
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 10},
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -141,9 +137,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'pt-br'
+LANGUAGE_CODE = "pt-br"
 
-TIME_ZONE = 'America/Sao_Paulo'
+TIME_ZONE = "America/Sao_Paulo"
 
 USE_I18N = True
 
@@ -163,11 +159,11 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # ---------------------------------------------------------------------------
-# Autenticacao e senhas (requisitos 1.1 a 1.4)
+# Autenticação e senhas (requisitos 1.1 a 1.4)
 # ---------------------------------------------------------------------------
 AUTH_USER_MODEL = "accounts.User"
 
@@ -179,11 +175,41 @@ PASSWORD_HASHERS = [
 
 
 # ---------------------------------------------------------------------------
-# Seguranca aplicada apenas em producao (requisitos 3.1 e 3.2)
+# Autenticação em duas etapas (requisitos 1.5 e 1.6)
+# ---------------------------------------------------------------------------
+OTP_TOTP_ISSUER = "Health In Sight"
+
+# Atraso progressivo após códigos inválidos, para dificultar tentativa em massa.
+OTP_TOTP_THROTTLE_FACTOR = 1
+
+# Tempo máximo entre a senha correta e a validação do código.
+TWO_FACTOR_PENDING_TIMEOUT = timedelta(minutes=5)
+
+
+# ---------------------------------------------------------------------------
+# Sessões (requisitos 1.9 e 1.10)
+# ---------------------------------------------------------------------------
+SESSION_COOKIE_AGE = 900            # 15 minutos
+SESSION_SAVE_EVERY_REQUEST = True   # renova a cada requisição (expiração deslizante)
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_HTTPONLY = True      # invisível para JavaScript, mitiga roubo por XSS
+SESSION_COOKIE_SAMESITE = "Lax"     # mitiga CSRF
+
+
+# ---------------------------------------------------------------------------
+# Para onde o Django redireciona
+# ---------------------------------------------------------------------------
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "accounts:profile"
+LOGOUT_REDIRECT_URL = "home"
+
+
+# ---------------------------------------------------------------------------
+# Segurança aplicada apenas em produção (requisitos 3.1 e 3.2)
 # ---------------------------------------------------------------------------
 if not DEBUG:
-    # O Render encerra o TLS em um proxy; sem este cabecalho o Django
-    # entenderia a requisicao como HTTP e entraria em loop de redirecionamento.
+    # O Render encerra o TLS em um proxy reverso. Sem este cabeçalho o Django
+    # entenderia a requisição como HTTP e entraria em loop de redirecionamento.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True
 
@@ -205,31 +231,3 @@ if not DEBUG:
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
         },
     }
-
-
-  # ---------------------------------------------------------------------------
-# Autenticacao em duas etapas (requisitos 1.5 e 1.6)
-# ---------------------------------------------------------------------------
-OTP_TOTP_ISSUER = "Health In Sight"
-
-# Atraso progressivo apos codigos invalidos, para dificultar tentativa em massa.
-OTP_TOTP_THROTTLE_FACTOR = 1
-
-# Tempo maximo entre a senha correta e a validacao do codigo.
-TWO_FACTOR_PENDING_TIMEOUT = timedelta(minutes=5)
-
-# ---------------------------------------------------------------------------
-# Sessoes (requisitos 1.9 e 1.10)
-# ---------------------------------------------------------------------------
-SESSION_COOKIE_AGE = 900          # 15 minutos
-SESSION_SAVE_EVERY_REQUEST = True  # renova a cada requisicao (expiracao deslizante)
-SESSION_EXPIRE_AT_BROWSER_CLOSE = True
-SESSION_COOKIE_HTTPONLY = True     # invisivel para JavaScript, mitiga roubo por XSS
-SESSION_COOKIE_SAMESITE = "Lax"    # mitiga CSRF
-
-# ---------------------------------------------------------------------------
-# Para onde o Django redireciona
-# ---------------------------------------------------------------------------
-LOGIN_URL = "accounts:login"
-LOGIN_REDIRECT_URL = "accounts:profile"
-LOGOUT_REDIRECT_URL = "home"
