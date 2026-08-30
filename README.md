@@ -35,7 +35,7 @@ O que o sistema guarda é só o necessário para a conta funcionar:
 
 ## Como está feito
 
-Python 3.12 com Django 5.2 no servidor, HTML, CSS e JavaScript na tela. O banco é MySQL hospedado no Aiven, com conexão cifrada. O site roda no Render, com HTTPS.
+Python 3.12 com Django 5.2 no servidor, HTML, CSS e JavaScript (ainda não começamos a usar) na tela. O banco é MySQL hospedado no Aiven, com conexão cifrada. O site roda no Render, com HTTPS.
 
 Para as senhas usamos Argon2id, e para a verificação em duas etapas o padrão TOTP, o mesmo dos aplicativos autenticadores como Google Authenticator.
 
@@ -86,12 +86,21 @@ Recuperação de senha por e-mail, o catálogo de conteúdos de saúde, as telas
 
 ## Referências
 
-- BIRYUKOV, A. et al. Argon2 Memory-Hard Function for Password Hashing and Proof-of-Work Applications. RFC 9106, IETF, 2021.
+- https://www.boldare.com/blog/how-to-improve-user-password-security-with-argon2/
 - M'RAIHI, D. et al. TOTP: Time-Based One-Time Password Algorithm. RFC 6238, IETF, 2011.
 - NIST. Digital Identity Guidelines: Authentication and Lifecycle Management. SP 800-63B, 2017.
 - OWASP. Password Storage Cheat Sheet.
 - BRASIL. Lei nº 13.709, de 14 de agosto de 2018 (LGPD).
 - ORGANIZAÇÃO MUNDIAL DA SAÚDE. Infodemic management.
+
+## Utilizamos
+
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Django](https://img.shields.io/badge/Django-5.2-092E20?style=for-the-badge&logo=django&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
+![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white)
+![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css&logoColor=white)
+![Render](https://img.shields.io/badge/Render-000000?style=for-the-badge&logo=render&logoColor=white)
 
 ## Equipe
 
@@ -99,13 +108,6 @@ Recuperação de senha por e-mail, o catálogo de conteúdos de saúde, as telas
 - Cassiano Jesus da Silva — [@Ashketchup13](https://github.com/Ashketchup13)
 - Yan Baumgarten Costa — [@Baumgarten1801](https://github.com/Baumgarten1801)
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Django](https://img.shields.io/badge/Django-5.2-092E20?style=for-the-badge&logo=django&logoColor=white)
-![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
-![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white)
-![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css&logoColor=white)
-![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
-![Render](https://img.shields.io/badge/Render-000000?style=for-the-badge&logo=render&logoColor=white)
 
 ## Licença
 
