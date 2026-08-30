@@ -1,178 +1,123 @@
 # Evidências de funcionamento
 
-Documento do requisito 1.8. Todos os itens abaixo são demonstrados pelo
-front-end da aplicação, conforme exigido.
+Comprovação prática dos requisitos do bloco 1, demonstrados pelo front-end da aplicação.
 
 Aplicação publicada: https://projeto-politicas-seguranca.onrender.com
 
-> **Como usar este arquivo:** tire cada print indicado, salve na pasta
-> `docs/img/` com o nome sugerido e a imagem aparece automaticamente.
-> Prints que ainda não foram tirados ficam com o espaço em branco.
+Check-list dos requisitos: [checklist.md](checklist.md)
+
+---
+
+## Telas da aplicação
+
+Página inicial:
+
+![Página inicial](img/01-home.jpg)
+
+Criação de conta:
+
+![Tela de cadastro](img/02-cadastro.jpg)
+
+Entrada com e-mail e senha:
+
+![Tela de login](img/03-login.jpg)
 
 ---
 
 ## 1.1, 1.3 e 1.4 — Hash Argon2id, salt único e armazenamento
 
-**Pelo front-end:** criar duas contas em `/conta/register/` usando a mesma
-senha.
+Consulta à tabela de usuários no banco de dados.
 
-**Evidência:** consulta ao banco mostrando as duas linhas.
+**O que a imagem comprova:**
 
-```sql
-SELECT email, LEFT(password, 60) FROM accounts_user;
-```
+- o prefixo `argon2$argon2id$` mostra o algoritmo em uso (requisito 1.1)
+- o trecho `m=65536,t=3,p=2` mostra os parâmetros de custo configurados (1.2)
+- contas diferentes têm hashes completamente diferentes, porque o salt é gerado por senha (requisito 1.3)
+- algoritmo, parâmetros, salt e hash ficam gravados no mesmo campo, no formato PHC (requisito 1.4)
 
-As duas senhas são idênticas, e os hashes são completamente diferentes, porque
-o salt é gerado a cada senha. O prefixo `argon2$argon2id$` comprova o
-algoritmo, e o trecho `m=65536,t=3,p=2` comprova os parâmetros configurados.
-
-![Hashes no banco](img/01-hashes-no-banco.png)
-
----
-
-## 1.2 — Parâmetros de custo
-
-**Evidência:** o próprio hash carrega os parâmetros usados.
-
-```
-argon2$argon2id$v=19$m=65536,t=3,p=2$SALT$HASH
-```
-
-A justificativa de cada valor está em [decisoes-tecnicas.md](decisoes-tecnicas.md).
+![Hashes Argon2id no banco](img/08-hashes-argon2.jpg)
 
 ---
 
 ## Validação de senha no cadastro
 
-**Pelo front-end:** tentar criar conta com a senha `123456`.
+Tentativa de cadastro com a senha `123456`.
 
-**Evidência:** a aplicação recusa com três mensagens simultâneas — senha curta
-demais, senha comum demais e senha apenas numérica.
+**O que a imagem comprova:** a aplicação recusa apresentando três motivos ao mesmo tempo — senha curta demais, senha comum demais e senha inteiramente numérica. São os validadores configurados em `AUTH_PASSWORD_VALIDATORS`, incluindo o mínimo de 10 caracteres.
 
-![Validação de senha](img/02-senha-fraca-recusada.png)
-
-**Pelo front-end:** tentar criar conta sem marcar a caixa da política de
-privacidade.
-
-**Evidência:** o envio é bloqueado.
-
-![Consentimento obrigatório](img/03-consentimento-obrigatorio.png)
+![Senha fraca recusada](img/12-senha-fraca.png)
 
 ---
 
-## 1.5 — Ativação da verificação em duas etapas
+## 1.5 — Verificação em duas etapas implementada
 
-**Pelo front-end:** entrar em `/conta/perfil/` e ativar a verificação em duas
-etapas.
+Tela de ativação, com o QR Code lido pelo aplicativo autenticador.
 
-**Evidência:** o QR Code é exibido na tela e lido pelo aplicativo
-autenticador. Após digitar um código válido, o perfil passa a indicar a
-verificação como ativa.
+**O que a imagem comprova:** o segredo é gerado e apresentado em tela. O dispositivo nasce como não confirmado e só passa a valer depois que a pessoa digita um código válido, o que evita que alguém fique trancado fora da própria conta.
 
-![QR Code de ativação](img/04-qrcode-ativacao.png)
+![Ativação da verificação em duas etapas](img/05-ativacao-2fa.jpg)
 
-![Perfil com 2FA ativo](img/05-perfil-2fa-ativo.png)
+Perfil com a verificação ativa:
+
+![Perfil com 2FA ativo](img/06-perfil-2fa-ativo.jpg)
+
+Perfil com a verificação desativada:
+
+![Perfil com 2FA desativado](img/07-perfil-2fa-desativado.jpg)
 
 ---
 
 ## 1.6 — Validação do 2FA após a autenticação primária
 
-Este é o item central do bloco. A senha correta **não** cria sessão.
+Este é o item central do bloco: **acertar a senha não cria sessão**.
 
-**Pelo front-end:** sair da conta e entrar novamente com e-mail e senha
-corretos.
+Após informar e-mail e senha corretos em uma conta com verificação ativa, a aplicação para nesta tela.
 
-**Evidência:** a aplicação para na tela do código, com o e-mail parcialmente
-mascarado, sem autenticar o usuário.
+**O que a imagem comprova:** a função `login()` do Django ainda não foi chamada neste momento. Não existe usuário autenticado, apenas uma marcação temporária de 5 minutos na sessão anônima. Quem tem a senha e não tem o celular não entra.
 
-![Etapa 2 de 2](img/06-tela-do-codigo.png)
-
-**Segunda evidência:** tentar acessar `/conta/perfil/` diretamente pela barra
-de endereços, nesse momento. A aplicação redireciona para o login, porque não
-existe sessão criada.
-
-![Acesso direto recusado](img/07-acesso-direto-recusado.png)
+![Etapa 2 de 2 — código de verificação](img/04-codigo-2fa.jpg)
 
 ---
 
-## 1.9 — Expiração de sessão
+## 1.9 e 1.10 — Sessão com expiração e invalidação no logout
 
-**Pelo front-end:** entrar na conta, permanecer 15 minutos sem interagir e
-recarregar a página.
-
-**Evidência:** a aplicação pede login novamente.
-
-![Sessão expirada](img/08-sessao-expirada.png)
-
-Configuração correspondente em `config/settings.py`:
+Configuração aplicada em `config/settings.py`:
 
 ```python
-SESSION_COOKIE_AGE = 900
-SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_AGE = 900            # 15 minutos
+SESSION_SAVE_EVERY_REQUEST = True   # expiração deslizante
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
 ```
 
----
+O prazo é de inatividade e se renova a cada requisição, então quem está navegando não é desconectado. No logout, o registro da sessão é removido do banco de dados, e não apenas o cookie do navegador — um cookie copiado antes do logout deixa de funcionar.
 
-## 1.10 — Invalidação de sessão no logout
-
-**Pelo front-end:** entrar na conta, sair e tentar voltar a `/conta/perfil/`
-pelo botão de voltar do navegador ou pelo histórico.
-
-**Evidência:** a aplicação redireciona para o login. A sessão foi removida do
-banco de dados, e não apenas o cookie do navegador.
-
-![Logout](img/09-logout.png)
+Comprovação automatizada em `apps/accounts/tests.py`, nos testes `test_sessao_expira_em_quinze_minutos` e `test_logout_apaga_a_sessao_do_banco`.
 
 ---
 
 ## 1.11 — Proteção contra força bruta
 
-**Pelo front-end:** errar a senha cinco vezes seguidas na tela de login.
+Tela apresentada na sexta tentativa, após cinco senhas incorretas.
 
-**Evidência:** a sexta tentativa apresenta a tela de bloqueio, com resposta
-HTTP 429.
+**O que a imagem comprova:** o acesso é bloqueado por 5 minutos, com resposta HTTP 429. O bloqueio vale para a combinação de conta e endereço de rede, e não apenas para a conta — bloquear só pelo e-mail permitiria que qualquer pessoa travasse a conta de outra de propósito.
 
-![Tela de bloqueio](img/10-bloqueio.png)
-
-O registro correspondente na tabela do `django-axes`:
-
-```sql
-SELECT attempt_time, failures_since_start FROM axes_accessattempt;
-```
-
-![Registro do bloqueio](img/11-registro-bloqueio.png)
+![Tela de bloqueio](img/11-bloqueio.png)
 
 ---
 
 ## 1.8 — Testes automatizados
 
-Além das demonstrações pelo front-end, o projeto possui 17 testes
-automatizados.
-
 ```
 python manage.py test apps.accounts
 ```
 
-Resultado esperado:
+**O que a imagem comprova:** os 17 testes passam. No meio da saída aparecem os registros do django-axes contabilizando as cinco falhas e aplicando o bloqueio, o que evidencia o requisito 1.11 em execução.
 
-```
-Found 17 test(s).
-Creating test database for alias 'default'...
-System check identified no issues (0 silenced).
-.................
-----------------------------------------------------------------------
-Ran 17 tests in 2.171s
+![Saída dos testes](img/09-testes.png)
 
-OK
-Destroying test database for alias 'default'...
-```
-
-![Saída dos testes](img/12-testes.png)
-
-Cobertura por grupo:
-
-| Grupo | Testes | Requisitos |
+| Grupo de testes | Quantidade | Requisitos cobertos |
 |---|---|---|
 | `ArmazenamentoDeSenhaTests` | 5 | 1.1, 1.2, 1.3, 1.4 |
 | `DuasEtapasTests` | 4 | 1.5, 1.6 |
@@ -182,12 +127,10 @@ Cobertura por grupo:
 
 ---
 
-## 3.1 — Comunicação protegida por TLS
+## Comunicação protegida por TLS
 
-**Pelo front-end:** abrir a aplicação publicada e verificar o cadeado na barra
-de endereços.
+Aplicação publicada, acessada pelo navegador.
 
-**Evidência:** conexão em HTTPS, com certificado válido. O acesso por HTTP é
-redirecionado automaticamente.
+**O que a imagem comprova:** conexão em HTTPS com certificado válido. O acesso por HTTP é redirecionado automaticamente e a aplicação envia o cabeçalho HSTS em produção.
 
-![HTTPS](img/13-https.png)
+![Conexão segura](img/10-https.png)
