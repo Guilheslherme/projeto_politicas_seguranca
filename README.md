@@ -1,85 +1,45 @@
 ![CONTRIBUIDOR](https://img.shields.io/github/contributors/guilheslherme/projeto_politicas_seguranca.svg?style=for-the-badge)
 ![license-shield](https://img.shields.io/github/license/guilheslherme/projeto_politicas_seguranca.svg?style=for-the-badge)
 
-
 # Health In Sight
 
-**Portal de divulgação de informações confiáveis sobre saúde**
+Portal que reúne informações confiáveis sobre saúde em um só lugar.
 
-Trabalho da disciplina de Políticas de Informação — Sistemas de Informação, Universidade de Mogi das Cruzes.
+Trabalho da disciplina de Políticas de Informação, do curso de Sistemas de Informação da Universidade de Mogi das Cruzes.
 
----
+Site no ar: https://projeto-politicas-seguranca.onrender.com
 
-## Sobre o Projeto
+## O problema
 
-O projeto aborda a circulação desordenada de informações sobre saúde no ambiente digital, fenômeno descrito pela Organização Mundial da Saúde como **infodemia**: o excesso de informação, verdadeira ou não, que dificulta que as pessoas encontrem orientação segura quando dela necessitam.
+Quando alguém procura informação sobre saúde na internet, o que aparece primeiro raramente é o que veio de um órgão oficial. A Organização Mundial da Saúde chama isso de infodemia: tanta informação circulando, verdadeira e falsa misturadas, que fica difícil achar orientação segura na hora em que ela é necessária.
 
-Órgãos como o Ministério da Saúde, a Fiocruz e as secretarias estaduais produzem material de qualidade, mas esse conteúdo está espalhado por dezenas de portais, com linguagem técnica e navegação pouco intuitiva. O resultado é que o cidadão recorre a buscas genéricas e redes sociais, onde a informação verificada concorre em igualdade com a desinformação.
+O conteúdo bom existe. O Ministério da Saúde, a Fiocruz e as secretarias estaduais publicam material sério, só que espalhado por dezenas de sites diferentes, escrito em linguagem técnica e com navegação complicada. Na prática, quase ninguém chega lá.
 
-O Health In Sight (Saúde à Vista) reúne esses conteúdos em um único ambiente, organizados por condição de saúde, área e público-alvo, sempre com atribuição da fonte oficial que os produziu e redirecionamento para a publicação original.
+O Health In Sight junta esse material em um lugar só, organizado por condição de saúde, área e público, sempre dizendo de onde veio e com link para a publicação original.
 
-A plataforma tem caráter **estritamente informativo e educativo**: não realiza diagnóstico, não emite prescrição e não presta atendimento clínico.
+O site é informativo. Não faz diagnóstico, não receita nada e não substitui consulta.
 
----
+## A decisão mais importante do projeto
 
-## Decisão de arquitetura: privacidade por concepção
+A LGPD trata dado de saúde como dado sensível, com regras mais rígidas que as dos dados comuns.
 
-A Lei Geral de Proteção de Dados Pessoais classifica dados de saúde como **dados pessoais sensíveis** (art. 5º, II), sujeitos ao regime mais restritivo do art. 11.
+Em vez de coletar esses dados e proteger com vários controles, o projeto simplesmente não coleta. Nenhum. O acervo é público e igual para todo mundo, sem personalização por condição de saúde. Assim não existe vazamento possível de dado sensível, porque não existe dado sensível guardado.
 
-Por essa razão, o projeto adota o princípio da necessidade (art. 6º, III): **a plataforma não coleta, não armazena e não processa dados de saúde de seus usuários**. O acervo é público e idêntico para todos os visitantes, sem personalização por condição de saúde. O risco de vazamento de dado sensível é eliminado na origem, e não apenas mitigado por controles.
+O que o sistema guarda é só o necessário para a conta funcionar:
 
-Os dados pessoais efetivamente tratados são apenas os necessários à autenticação e à segurança do sistema:
+- nome e e-mail, para identificar a pessoa e falar com ela
+- a senha, e mesmo assim só o hash, que não dá para reverter
+- o segredo da verificação em duas etapas
+- IP e horário de acesso, para segurança
+- o registro de que a pessoa aceitou a política de privacidade, com data e versão
 
-| Dado | Finalidade |
-|---|---|
-| Nome completo | Identificação na interface |
-| E-mail | Login, recuperação de senha, avisos da conta |
-| Senha | Autenticação — armazenada apenas como hash Argon2id |
-| Segredo do 2FA | Validação do segundo fator  |
-| IP e data/hora de acesso | Segurança e rastreabilidade |
-| Registro de consentimento | Data, versão do termo e finalidade aceita |
+## Como está feito
 
----
+Python 3.12 com Django 5.2 no servidor, HTML, CSS e JavaScript na tela. O banco é MySQL hospedado no Aiven, com conexão cifrada. O site roda no Render, com HTTPS.
 
-## Tecnologias
+Para as senhas usamos Argon2id, e para a verificação em duas etapas o padrão TOTP, o mesmo dos aplicativos autenticadores como Google Authenticator.
 
-| Camada | Tecnologia |
-|---|---|
-| Front-end | HTML5, CSS3, JavaScript |
-| Back-end | Python 3.12, Django 5.2 |
-| Banco de dados | MySQL 8 (Aiven, conexão TLS) |
-| Hash de senhas | Argon2id (`argon2-cffi`) |
-| Segundo fator | TOTP — RFC 6238 (`django-otp`) |
-| Força bruta | `django-axes` |
-| Hospedagem | Render, com TLS gerenciado |
-
----
-
-## Estrutura
-
-```
-projeto_politicas_seguranca/
-├── config/              configuração do projeto
-│   ├── settings.py      configurações
-│   ├── urls.py          rotas principais
-│   └── wsgi.py          entrada em produção
-├── apps/
-│   ├── accounts/        autenticação, credenciais, 2FA e sessões
-│   ├── catalog/         conteúdos de saúde, áreas e fontes parceiras
-│   ├── privacy/         consentimento e direitos do titular (LGPD)
-│   └── audit/           trilha de auditoria
-├── templates/           páginas HTML
-├── static/              CSS, JavaScript e imagens
-├── certs/               certificado da CA do banco (não versionado)
-├── docs/                documentação técnica
-└── requirements.txt
-```
-
-As configurações ficam em `config/settings.py`.
-
----
-
-## Como executar
+## Rodando na sua máquina
 
 ```bash
 git clone https://github.com/Guilheslherme/projeto_politicas_seguranca.git
@@ -92,55 +52,46 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-No Linux ou macOS, troque a ativação por `source .venv/bin/activate`.
+O site abre em http://127.0.0.1:8000.
 
-O site fica em `http://127.0.0.1:8000`. Variáveis sensíveis são lidas de um arquivo `.env` na raiz, que não é versionado.
+Falta uma coisa antes de rodar: copiar o `.env.example` para `.env` e preencher. Esse arquivo tem a chave do Django e a senha do banco, então ele não vai para o repositório. Cada um do grupo tem o seu, e o certificado do banco também fica de fora.
 
----
+## Segurança
 
-## Segurança planejada
+**Senhas.** Não guardamos senha nenhuma, só o resultado do Argon2id, que é um caminho de mão única. Os valores usados são 64 MiB de memória, 3 iterações e paralelismo 2, que é uma das configurações recomendadas pela RFC 9106. A memória alta é de propósito: ela atrapalha justamente quem tenta quebrar senhas em placa de vídeo.
 
-| Mecanismo | Implementação |
-|---|---|
-| Hash de senhas | Argon2id, conforme RFC 9106 |
-| Parâmetros de custo | m = 64 MiB, t = 3, p = 2 |
-| Salt | Aleatório, único por senha |
-| Segundo fator | TOTP validado após a autenticação primária |
-| Sessão | Expiração de 15 minutos, renovada a cada requisição |
-| Logout | Destruição da sessão no servidor |
-| Força bruta | Bloqueio após 5 falhas, resfriamento de 15 minutos |
-| Transporte | HTTPS obrigatório, HSTS, cookies `Secure` e `HttpOnly` |
-| Em repouso | Segredo do 2FA e IPs de auditoria cifrados com AES |
-| Segredos | Fora do controle de versão, em variáveis de ambiente |
+Cada senha recebe um salt aleatório próprio. Duas pessoas com a mesma senha ficam com hashes completamente diferentes no banco, o que impede que alguém descubra as duas de uma vez.
 
----
+**Entrada em duas etapas.** Acertar a senha não entra no site. O sistema guarda uma marcação temporária de 5 minutos e só cria a sessão depois que o código de 6 dígitos do celular for conferido. Quem tem a senha mas não tem o telefone fica de fora.
 
-## Estado do desenvolvimento
+**Sessão.** Expira em 15 minutos parados. Quem está usando não é desconectado, porque o prazo reinicia a cada página aberta. Fechar o navegador também encerra. No logout a sessão é apagada do banco, não só esquecida pelo navegador, então um cookie copiado antes não serve para nada depois.
 
-| Etapa | Situação |
-|---|---|
-| Estrutura do projeto e separação de ambientes | Concluída |
-| Proteção de segredos no controle de versão | Concluída |
-| Modelo de usuário customizado e Argon2id | Em desenvolvimento |
-| Cadastro, login e logout | Planejada |
-| Autenticação de dois fatores (TOTP) | Planejada |
-| Proteção contra força bruta | Planejada |
-| Catálogo de conteúdos de saúde | Planejada |
-| Funcionalidades de LGPD | Planejada |
-| Publicação (Render + Aiven) | Planejada |
+**Tentativas de invasão.** Depois de 5 senhas erradas, aquela combinação de conta e endereço fica bloqueada por 5 minutos. O bloqueio é da combinação, e não só do e-mail, senão qualquer pessoa poderia travar a conta de outra de propósito.
 
----
+**Transporte.** Em produção o site força HTTPS e a conexão com o banco é cifrada, com verificação do certificado.
 
-## Referências normativas
+## O que já funciona
 
-- BIRYUKOV, A. et al. *Argon2 Memory-Hard Function for Password Hashing*. RFC 9106, IETF, 2021.
-- M'RAIHI, D. et al. *TOTP: Time-Based One-Time Password Algorithm*. RFC 6238, IETF, 2011.
-- NIST. *Digital Identity Guidelines: Authentication and Lifecycle Management*. SP 800-63B.
-- OWASP. *Password Storage Cheat Sheet*.
-- BRASIL. *Lei nº 13.709, de 14 de agosto de 2018* (LGPD).
-- ORGANIZAÇÃO MUNDIAL DA SAÚDE. *Infodemic management*.
+Cadastro, login, logout, verificação em duas etapas com QR Code, bloqueio por tentativas repetidas e a tela de perfil.
 
----
+Tem 17 testes automatizados cobrindo essa parte. Para rodar:
+
+```bash
+python manage.py test apps.accounts
+```
+
+## O que ainda falta
+
+Recuperação de senha por e-mail, o catálogo de conteúdos de saúde, as telas de exercício dos direitos da LGPD (consultar, exportar e excluir os próprios dados) e a trilha de auditoria.
+
+## Referências
+
+- BIRYUKOV, A. et al. Argon2 Memory-Hard Function for Password Hashing and Proof-of-Work Applications. RFC 9106, IETF, 2021.
+- M'RAIHI, D. et al. TOTP: Time-Based One-Time Password Algorithm. RFC 6238, IETF, 2011.
+- NIST. Digital Identity Guidelines: Authentication and Lifecycle Management. SP 800-63B, 2017.
+- OWASP. Password Storage Cheat Sheet.
+- BRASIL. Lei nº 13.709, de 14 de agosto de 2018 (LGPD).
+- ORGANIZAÇÃO MUNDIAL DA SAÚDE. Infodemic management.
 
 ## Equipe
 
@@ -148,8 +99,14 @@ O site fica em `http://127.0.0.1:8000`. Variáveis sensíveis são lidas de um a
 - Cassiano Jesus da Silva — [@Ashketchup13](https://github.com/Ashketchup13)
 - Yan Baumgarten Costa — [@Baumgarten1801](https://github.com/Baumgarten1801)
 
----
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Django](https://img.shields.io/badge/Django-5.2-092E20?style=for-the-badge&logo=django&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
+![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white)
+![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
+![Render](https://img.shields.io/badge/Render-000000?style=for-the-badge&logo=render&logoColor=white)
 
 ## Licença
 
-Distribuído sob a licença MIT. Veja [LICENSE](LICENSE).
+MIT. O texto está no arquivo [LICENSE](LICENSE).
