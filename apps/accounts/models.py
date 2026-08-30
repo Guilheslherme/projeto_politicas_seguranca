@@ -15,8 +15,8 @@ class User(AbstractBaseUser, PermissionsMixin):
  
     Só são coletados os dados necessários para autenticar e proteger a conta."""
    
-    # Identificador de login. É único, então o banco recusa duas contas com o
-    # mesmo endereço mesmo que a validação da aplicação falhe.
+    """ Identificador de login. É único, então o banco recusa duas contas com o
+    mesmo endereço mesmo que a validação da aplicação falhe."""
     email = models.EmailField("e-mail", unique=True)
 
     full_name = models.CharField("nome completo", max_length=150)
@@ -28,14 +28,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Dá acesso ao painel administrativo.
     is_staff = models.BooleanField("equipe", default=False)
 
-    # Espelha o estado da verificação em duas etapas. A informação verdadeira
-    # está no modelo TOTPDevice, mas este campo permite consultas rápidas.
+    """ Espelha o estado da verificação em duas etapas. A informação verdadeira
+     está no modelo TOTPDevice, mas este campo permite consultas rápidas. """
     two_factor_enabled = models.BooleanField("2FA ativo", default=False)
 
     date_joined = models.DateTimeField("cadastrado em", default=timezone.now)
 
-    # Registra quando a senha foi trocada pela última vez. Serve de base para
-    # política de expiração de senha e para a trilha de auditoria.
+    """ Registra quando a senha foi trocada pela última vez. Serve de base para
+    política de expiração de senha e para a trilha de auditoria. """
     last_password_change = models.DateTimeField(
         "ultima troca de senha", null=True, blank=True
     )
@@ -45,7 +45,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Diz ao Django qual campo identifica a pessoa no login.
     USERNAME_FIELD = "email"
 
-        # Campos pedidos além do e-mail e da senha no createsuperuser.
+    # Campos pedidos além do e-mail e da senha no createsuperuser.
     REQUIRED_FIELDS = ["full_name"]
 
     class Meta:
@@ -65,7 +65,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     def set_password(self, raw_password):
         """Garante que a data da última troca de senha seja atualizada sempre que a senha for alterada.
         A senha em si é armazenada de forma segura usando o algoritmo de hash configurado (Argon2)."""
-        
+
         super().set_password(raw_password)
         self.last_password_change = timezone.now()
 

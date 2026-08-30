@@ -22,6 +22,6 @@ class ProjectArgon2PasswordHasher(Argon2PasswordHasher):
     # cada senha ocupa cerca de 100 bytes.
     memory_cost = 65536
 
-    # Número de threads processadas em paralelo, compatível com os núcleos
-    # disponíveis no servidor de aplicação.
+    """Número de threads processadas em paralelo, compatível com os núcleos
+    disponíveis no servidor de aplicação. """
     parallelism = 2
