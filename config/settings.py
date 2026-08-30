@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -50,6 +51,7 @@ INSTALLED_APPS = [
     "django_otp",
     "django_otp.plugins.otp_totp",
     "django_otp.plugins.otp_static",
+    "axes",
 
     # Aplicativos do projeto
     "apps.accounts",
@@ -68,6 +70,7 @@ MIDDLEWARE = [
     "django_otp.middleware.OTPMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "axes.middleware.AxesMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -108,10 +111,17 @@ DATABASES = {
     }
 }
 
-# O Aiven exige conexão cifrada (requisitos 3.1 e 3.4).
 DB_SSL_CA = os.environ.get("DB_SSL_CA", "")
 if DB_SSL_CA:
     DATABASES["default"]["OPTIONS"]["ssl"] = {"ca": str(BASE_DIR / DB_SSL_CA)}
+
+# Os testes usam um banco temporário em memória, para não criar nem apagar
+# nada no servidor do Aiven.
+if "test" in sys.argv:
+    DATABASES["default"] = {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": ":memory:",
+    }
 
 
 # Password validation
@@ -173,6 +183,13 @@ PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
 ]
 
+# A ordem importa: o axes confere primeiro se aquele e-mail e aquele endereço
+# estão bloqueados, e nem chega a testar a senha.
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
 
 # ---------------------------------------------------------------------------
 # Autenticação em duas etapas (requisitos 1.5 e 1.6)
@@ -184,6 +201,21 @@ OTP_TOTP_THROTTLE_FACTOR = 1
 
 # Tempo máximo entre a senha correta e a validação do código.
 TWO_FACTOR_PENDING_TIMEOUT = timedelta(minutes=5)
+
+
+# ---------------------------------------------------------------------------
+# Proteção contra força bruta (requisito 1.11)
+# ---------------------------------------------------------------------------
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = timedelta(minutes=5)
+
+# A lista dentro da lista bloqueia a combinação de e-mail e endereço de rede.
+# Bloquear só pelo e-mail permitiria travar a conta de qualquer pessoa de
+# propósito, bastando errar a senha dela cinco vezes.
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+
+AXES_RESET_ON_SUCCESS = True
+AXES_LOCKOUT_TEMPLATE = "accounts/lockout.html"
 
 
 # ---------------------------------------------------------------------------
@@ -204,9 +236,6 @@ LOGIN_REDIRECT_URL = "accounts:profile"
 LOGOUT_REDIRECT_URL = "home"
 
 
-# ---------------------------------------------------------------------------
-# Segurança aplicada apenas em produção (requisitos 3.1 e 3.2)
-# ---------------------------------------------------------------------------
 if not DEBUG:
     # O Render encerra o TLS em um proxy reverso. Sem este cabeçalho o Django
     # entenderia a requisição como HTTP e entraria em loop de redirecionamento.
@@ -224,6 +253,10 @@ if not DEBUG:
     X_FRAME_OPTIONS = "DENY"
 
     CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS if "." in h]
+
+    # A requisição chega pelo proxy do Render. Sem isto o axes leria o endereço
+    # do proxy e bloquearia todos os usuários de uma vez.
+    AXES_IPWARE_PROXY_COUNT = 1
 
     STORAGES = {
         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
