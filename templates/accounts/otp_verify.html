@@ -3,10 +3,12 @@
 
 {% block content %}
 <div class="card card-narrow">
-  <h1>Verificação em duas etapas</h1>
+  <p class="muted small">Etapa 2 de 2</p>
+  <h1>Confirme que é você</h1>
+
   <p class="muted">
-    Etapa 2 de 2 &mdash; digite o código de 6 dígitos que aparece no
-    autenticador para <strong>{{ email }}</strong>.
+    Abra seu aplicativo autenticador e digite o código de 6 dígitos da conta
+    <strong>{{ email }}</strong>. Ele muda a cada 30 segundos.
   </p>
 
   <form method="post" novalidate>
@@ -17,8 +19,17 @@
   </form>
 
   <p class="muted small">
-    Você ainda não está autenticado: a sessão só é criada após a validação
-    deste código.
+    O código não está funcionando? Confira se a hora do seu celular está no
+    modo automático &mdash; a verificação depende do relógio.
+  </p>
+
+  <p class="muted small">
+    Esta etapa protege sua conta: mesmo quem souber sua senha não consegue
+    entrar sem o código do seu celular.
+  </p>
+
+  <p class="small">
+    <a href="{% url 'accounts:login' %}">Entrar com outra conta</a>
   </p>
 </div>
 {% endblock %}
