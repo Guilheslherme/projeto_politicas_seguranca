@@ -6,12 +6,8 @@ from .managers import UserManager
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    """
-    Usuario da plataforma.
 
-    O campo `password`, herdado de AbstractBaseUser, guarda a string completa
-    do Argon2id: algoritmo, parametros, salt e hash (requisito 1.4).
-    """
+   
 
     email = models.EmailField("e-mail", unique=True)
     full_name = models.CharField("nome completo", max_length=150)

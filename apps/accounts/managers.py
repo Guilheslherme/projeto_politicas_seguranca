@@ -2,7 +2,8 @@ from django.contrib.auth.base_user import BaseUserManager
 
 
 class UserManager(BaseUserManager):
-    """Sabe criar usuarios. O identificador de login e o e-mail."""
+    """Gerenciador de usuarios customizado, para usar e-mail como identificador unico.
+    """
 
     use_in_migrations = True
 
