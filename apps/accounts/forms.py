@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 
-
+#essa parte se refere ao login, sendo necessario apenas o email     
 class EmailAuthenticationForm(AuthenticationForm):
     """Login por e-mail em vez de nome de usuario."""
 
@@ -17,7 +17,7 @@ class EmailAuthenticationForm(AuthenticationForm):
         "invalid_login": "E-mail ou senha incorretos.",
     }
 
-
+#aqui pede o codigo de 6 digitos 
 class OTPTokenForm(forms.Form):
     """Codigo de 6 digitos do aplicativo autenticador."""
 
@@ -48,7 +48,7 @@ from django.contrib.auth.forms import UserCreationForm
 
 from .models import User
 
-
+#esta parte e sobre o cadastro de um novo usuario, que apenas pede o nome e o email, e verifica se ja tem alguem cadastrado com aquele email.
 class RegistrationForm(UserCreationForm):
     """Cadastro de novo usuario. Aceita apenas e-mail e nome completo."""
 

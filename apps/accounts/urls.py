@@ -1,3 +1,4 @@
+#importa as views e é a ordem das coisas que o sistema ira pedir (login, senha 2FA, logout etc.)
 from django.urls import path
 
 from . import views

@@ -17,7 +17,7 @@ from django_otp.plugins.otp_totp.models import TOTPDevice
 from .forms import EmailAuthenticationForm, OTPTokenForm, RegistrationForm
 from .models import User
 
-
+#nesta pagina que acontece o 2FA com TOTP, cadastro, a ativação e desativação dos 2 fatores e mostra o perfil do usuario.
 PENDING_USER_KEY = "pre_2fa_user_id"
 PENDING_BACKEND_KEY = "pre_2fa_backend"
 PENDING_TIME_KEY = "pre_2fa_started_at"
