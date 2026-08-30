@@ -26,7 +26,7 @@ As duas senhas são idênticas, e os hashes são completamente diferentes, porqu
 o salt é gerado a cada senha. O prefixo `argon2$argon2id$` comprova o
 algoritmo, e o trecho `m=65536,t=3,p=2` comprova os parâmetros configurados.
 
-![Hashes no banco](img/01-hashes-no-banco.png)
+![Hashes no banco](docs/img/Teste Visual - Argon2 - Banco de Dados.jpg)
 
 ---
 
