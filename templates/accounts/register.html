@@ -19,13 +19,13 @@
   </form>
 
   <p class="muted small">
-    Coletamos apenas nome e e-mail, usados para autenticacao e comunicacao
-    sobre a sua conta. Sua senha e armazenada como hash Argon2id - nem a
-    equipe do projeto consegue le-la. Nao coletamos nenhum dado de saude.
+    Coletamos apenas Nome e E-mail, usados para autenticação e comunicação
+    sobre a sua conta. Sua senha é armazenada utilizando criptografia. 
+    Não coletamos nenhum dados de saúde.
   </p>
 
   <p class="muted small">
-    Ja tem conta? <a href="{% url 'accounts:login' %}">Entrar</a>
+    Já tem uma conta? <a href="{% url 'accounts:login' %}">Entrar</a>
   </p>
 </div>
 {% endblock %}

@@ -8,17 +8,17 @@
   <dl class="data-list">
     <dt>E-mail</dt><dd>{{ user.email }}</dd>
     <dt>Algoritmo do hash da senha</dt><dd class="mono">{{ hash_algorithm }}</dd>
-    <dt>A sessãoo expira em</dt><dd>{{ session_expiry }}</dd>
+    <dt>A sessão expira em</dt><dd>{{ session_expiry }}</dd>
     <dt>Verificação em duas etapas</dt>
     <dd>{% if has_2fa %}Ativa{% else %}Inativa{% endif %}</dd>
-    <dt>Duplo fator está ativado nesta sessão!</dt>
+    <dt>Segurança Dois Fatores (2FA) está ativada nesta sessão!</dt>
     <dd>{% if is_verified %}Sim{% else %}Não{% endif %}</dd>
   </dl>
 
   {% if has_2fa %}
     <form method="post" action="{% url 'accounts:otp_disable' %}">
       {% csrf_token %}
-      <button type="submit" class="btn-danger">Desativar segurança de dois fatores</button>
+      <button type="submit" class="btn-danger">Desativar a Segurança de Dois Fatores (2FA)</button>
     </form>
   {% else %}
     <a class="btn-primary" href="{% url 'accounts:otp_setup' %}">Ativar 2FA</a>
