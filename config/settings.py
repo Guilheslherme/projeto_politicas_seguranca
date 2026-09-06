@@ -29,12 +29,27 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "minha chave gerada para desenv
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+# Endereços que a aplicação aceita atender, separados por vírgula na variável
+# de ambiente. Publicar em outro domínio passa a ser mudança de configuração no
+# painel do Render, e não alteração de código. O padrão cobre o uso local.
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
 
-# O Render informa o endereço público do serviço nesta variável.
+# O Render informa o endereço público do serviço nesta variável. Fica como rede
+# de segurança: se alguém esquecer de preencher ALLOWED_HOSTS no painel, o
+# serviço ainda responde no próprio endereço em vez de recusar toda requisição.
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
-if RENDER_EXTERNAL_HOSTNAME:
+if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
+# Origens aceitas em requisições que alteram dados, montadas a partir dos
+# mesmos hosts. O Django exige o esquema junto do endereço, e em produção o
+# acesso é sempre por https. Um host com "*" não vira origem: curinga não é
+# aceito aqui, e incluí-lo derrubaria a aplicação na inicialização.
+CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS if "*" not in host]
 
 
 # Application definition
@@ -165,6 +180,27 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# Os arquivos estáticos são servidos pelo WhiteNoise, que está no MIDDLEWARE
+# logo abaixo do SecurityMiddleware. Isso dispensa um servidor de arquivos
+# separado, que o plano gratuito do Render não oferece.
+#
+# O padrão é o armazenamento simples do Django. O manifesto que mapeia cada
+# arquivo para o nome com hash só existe depois de rodar collectstatic, e sem
+# ele a tag {% static %} levantaria erro em vez de servir a página.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+
+if not DEBUG:
+    # Em produção o WhiteNoise comprime os arquivos e grava o hash do conteúdo
+    # no nome. Isso permite cache longo no navegador sem risco de servir versão
+    # velha: quando o arquivo muda, o nome muda junto. O build.sh roda o
+    # collectstatic que gera esse manifesto.
+    STORAGES["staticfiles"]["BACKEND"] = (
+        "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    )
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -299,15 +335,29 @@ LOGGING = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Publicação no Render
+# ---------------------------------------------------------------------------
+
+# O Render encerra o TLS em um proxy reverso e repassa a requisição em HTTP.
+# Sem este cabeçalho o Django entenderia toda requisição como insegura: marcaria
+# os cookies como não seguros e entraria em loop de redirecionamento com o
+# SECURE_SSL_REDIRECT abaixo. Localmente é inofensivo, porque não há proxy
+# nenhum enviando X-Forwarded-Proto.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# As proteções abaixo dependem de HTTPS. Ligá-las em desenvolvimento, onde o
+# servidor responde em HTTP, tornaria o login impossível: o navegador guardaria
+# os cookies como exclusivos de HTTPS e não os devolveria em nenhuma
+# requisição.
 if not DEBUG:
-    # O Render encerra o TLS em um proxy reverso. Sem este cabeçalho o Django
-    # entenderia a requisição como HTTP e entraria em loop de redirecionamento.
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True
 
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
+    # Um ano. Depois da primeira visita, o navegador passa a recusar HTTP para
+    # este domínio por conta própria, sem nem chegar a fazer a requisição.
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
@@ -315,15 +365,6 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
 
-    CSRF_TRUSTED_ORIGINS = [f"https://{h}" for h in ALLOWED_HOSTS if "." in h]
-
     # A requisição chega pelo proxy do Render. Sem isto o axes leria o endereço
     # do proxy e bloquearia todos os usuários de uma vez.
     AXES_IPWARE_PROXY_COUNT = 1
-
-    STORAGES = {
-        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
-        },
-    }
