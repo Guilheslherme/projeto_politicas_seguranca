@@ -1,15 +1,24 @@
 import time
+import urllib.error
+from datetime import timedelta
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from django_otp.oath import TOTP
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from axes.models import AccessAttempt
 from axes.utils import reset
+
+from apps.audit.models import PasswordResetLog
+
+from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
+from .models import PasswordResetToken
 
 User = get_user_model()
 
@@ -214,3 +223,339 @@ class CadastroTests(TestCase):
             },
         )
         self.assertFalse(User.objects.filter(email="fraca@exemplo.com").exists())
+
+class RecuperacaoDeSenhaTests(TestCase):
+    """Requisitos 2.1 a 2.7."""
+
+    SENHA_NOVA = "OutraSenhaBoa2026"
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="esqueci@exemplo.com",
+            full_name="Usuario Esquecido",
+            password=SENHA,
+        )
+        reset()
+
+    def tearDown(self):
+        reset()
+
+    def pedir_link(self, email=None):
+        """Faz a solicitação e devolve o link que teria ido no e-mail.
+
+        O envio é substituído por um espião: o token em texto puro só existe
+        dentro do link, então é ali que o teste precisa olhar. Substituir o
+        envio também impede que a suíte consuma a cota do Brevo.
+        """
+        with patch("apps.accounts.views.enviar_link_de_recuperacao") as envio:
+            resposta = self.client.post(
+                reverse("accounts:password_reset"),
+                {"email": email or self.user.email},
+            )
+        link = envio.call_args[0][1] if envio.call_args else None
+        return resposta, link
+
+    # --- 2.1 fluxo completo -------------------------------------------------
+
+    def test_fluxo_completo_troca_a_senha(self):
+        _, link = self.pedir_link()
+        self.client.post(
+            link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
+        )
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.SENHA_NOVA))
+        self.assertFalse(self.user.check_password(SENHA))
+
+    def test_senha_redefinida_continua_em_argon2id(self):
+        _, link = self.pedir_link()
+        self.client.post(
+            link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
+        )
+
+        self.user.refresh_from_db()
+        # A senha nova passa pelo mesmo hasher do cadastro, e não por um
+        # caminho paralelo mais fraco.
+        self.assertTrue(self.user.password.startswith("argon2$argon2id$"))
+
+    def test_senha_nova_fraca_e_recusada(self):
+        _, link = self.pedir_link()
+        self.client.post(link, {"new_password1": "123456", "new_password2": "123456"})
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(SENHA))
+
+    def test_resposta_e_igual_para_email_inexistente(self):
+        # Anti-enumeração: nada na resposta diferencia uma conta que existe de
+        # uma que não existe.
+        com_conta, _ = self.pedir_link()
+        sem_conta, _ = self.pedir_link("ninguem@exemplo.com")
+
+        self.assertEqual(com_conta.status_code, sem_conta.status_code)
+        self.assertEqual(com_conta["Location"], sem_conta["Location"])
+
+    # --- 2.2 token criptograficamente seguro --------------------------------
+
+    def test_token_nao_e_gravado_em_texto_puro(self):
+        _, token_puro = PasswordResetToken.emitir(self.user)
+        registro = PasswordResetToken.objects.get()
+
+        self.assertNotEqual(registro.token_hash, token_puro)
+        self.assertEqual(
+            registro.token_hash, PasswordResetToken.calcular_hash(token_puro)
+        )
+        # 64 caracteres: o tamanho de um SHA-256 em hexadecimal.
+        self.assertEqual(len(registro.token_hash), 64)
+
+    def test_tokens_emitidos_sao_diferentes(self):
+        outro = User.objects.create_user(
+            email="outro2@exemplo.com", full_name="Outro", password=SENHA
+        )
+        _, primeiro = PasswordResetToken.emitir(self.user)
+        _, segundo = PasswordResetToken.emitir(outro)
+
+        self.assertNotEqual(primeiro, segundo)
+        # 32 bytes em base64 seguro para URL resultam em 43 caracteres.
+        self.assertEqual(len(primeiro), 43)
+
+    # --- 2.3 expiração ------------------------------------------------------
+
+    def test_token_nasce_com_prazo_configurado(self):
+        registro, _ = PasswordResetToken.emitir(self.user)
+        prazo = registro.expires_at - registro.created_at
+
+        self.assertAlmostEqual(
+            prazo.total_seconds(),
+            settings.PASSWORD_RESET_TOKEN_TIMEOUT.total_seconds(),
+            delta=5,
+        )
+
+    # --- 2.4 invalidação após o uso -----------------------------------------
+
+    def test_token_e_marcado_como_usado(self):
+        _, link = self.pedir_link()
+        self.client.post(
+            link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
+        )
+
+        registro = PasswordResetToken.objects.get()
+        self.assertIsNotNone(registro.used_at)
+
+    def test_mesmo_link_nao_serve_duas_vezes(self):
+        _, link = self.pedir_link()
+        self.client.post(
+            link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
+        )
+
+        terceira = "TerceiraSenhaBoa2026"
+        resposta = self.client.post(
+            link, {"new_password1": terceira, "new_password2": terceira}
+        )
+
+        self.assertEqual(resposta.status_code, 400)
+        self.user.refresh_from_db()
+        # Continua valendo a senha da primeira troca.
+        self.assertTrue(self.user.check_password(self.SENHA_NOVA))
+
+    def test_pedido_novo_cancela_o_link_anterior(self):
+        _, primeiro_link = self.pedir_link()
+        self.pedir_link()
+
+        resposta = self.client.post(
+            primeiro_link,
+            {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA},
+        )
+
+        self.assertEqual(resposta.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(SENHA))
+
+    # --- 2.5 falha correta para token expirado ------------------------------
+
+    def test_token_expirado_nao_troca_a_senha(self):
+        _, link = self.pedir_link()
+        # Empurra o vencimento para trás em vez de esperar meia hora.
+        PasswordResetToken.objects.update(
+            expires_at=timezone.now() - timedelta(minutes=1)
+        )
+
+        resposta = self.client.post(
+            link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
+        )
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertTemplateUsed(resposta, "accounts/password_reset_invalid.html")
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(SENHA))
+
+    def test_token_expirado_nem_mostra_o_formulario(self):
+        _, link = self.pedir_link()
+        PasswordResetToken.objects.update(
+            expires_at=timezone.now() - timedelta(minutes=1)
+        )
+
+        resposta = self.client.get(link)
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertNotContains(resposta, "new_password1", status_code=400)
+
+    def test_token_inventado_e_recusado(self):
+        resposta = self.client.get(
+            reverse("accounts:password_reset_confirm", args=["token-que-nunca-existiu"])
+        )
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertTemplateUsed(resposta, "accounts/password_reset_invalid.html")
+
+    # --- 2.6 e 2.7 registro em log ------------------------------------------
+
+    def test_solicitacao_fica_registrada(self):
+        self.pedir_link()
+
+        registro = PasswordResetLog.objects.filter(
+            event=PasswordResetLog.Event.SOLICITADO
+        ).first()
+        self.assertIsNotNone(registro)
+        # A conta é identificada pelo identificador interno, não pelo endereço.
+        self.assertEqual(registro.user, self.user)
+
+    def test_solicitacao_para_email_inexistente_tambem_fica_registrada(self):
+        self.pedir_link("ninguem@exemplo.com")
+
+        registro = PasswordResetLog.objects.filter(
+            event=PasswordResetLog.Event.SOLICITADO
+        ).first()
+        # O pedido entra na trilha mesmo sem conta correspondente, com usuário
+        # nulo. O endereço digitado não é gravado em lugar nenhum.
+        self.assertIsNotNone(registro)
+        self.assertIsNone(registro.user)
+
+    def test_sucesso_do_processo_fica_registrado(self):
+        _, link = self.pedir_link()
+        self.client.post(
+            link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
+        )
+
+        self.assertTrue(
+            PasswordResetLog.objects.filter(
+                event=PasswordResetLog.Event.SENHA_REDEFINIDA, user=self.user
+            ).exists()
+        )
+
+    def test_falha_do_processo_fica_registrada(self):
+        _, link = self.pedir_link()
+        PasswordResetToken.objects.update(
+            expires_at=timezone.now() - timedelta(minutes=1)
+        )
+        self.client.get(link)
+
+        self.assertTrue(
+            PasswordResetLog.objects.filter(
+                event=PasswordResetLog.Event.TOKEN_EXPIRADO
+            ).exists()
+        )
+
+    def test_falha_no_envio_do_email_fica_registrada(self):
+        with patch(
+            "apps.accounts.views.enviar_link_de_recuperacao",
+            side_effect=FalhaNoEnvio("Brevo fora do ar"),
+        ):
+            resposta = self.client.post(
+                reverse("accounts:password_reset"), {"email": self.user.email}
+            )
+
+        # A pessoa vê a mesma tela de sempre, mas a falha fica no log.
+        self.assertRedirects(resposta, reverse("accounts:password_reset_sent"))
+        self.assertTrue(
+            PasswordResetLog.objects.filter(
+                event=PasswordResetLog.Event.EMAIL_FALHOU
+            ).exists()
+        )
+
+    def test_excesso_de_pedidos_nao_gera_mais_links(self):
+        for _ in range(settings.PASSWORD_RESET_MAX_REQUESTS + 2):
+            self.pedir_link()
+
+        self.assertEqual(
+            PasswordResetToken.objects.count(), settings.PASSWORD_RESET_MAX_REQUESTS
+        )
+        self.assertTrue(
+            PasswordResetLog.objects.filter(
+                event=PasswordResetLog.Event.LIMITE_EXCEDIDO
+            ).exists()
+        )
+
+    # --- privacidade da trilha de auditoria ---------------------------------
+
+    def test_log_nao_guarda_email_token_nem_senha(self):
+        """Percorre o fluxo inteiro e varre todos os campos de todos os registros.
+
+        Cobre também os caminhos de falha, que são onde texto vindo de fora
+        costuma entrar no log sem ninguém perceber.
+        """
+        _, link = self.pedir_link()
+        token = link.rstrip("/").rsplit("/", 1)[-1]
+
+        # Link inventado, troca concluída e reuso do mesmo link.
+        self.client.get(
+            reverse("accounts:password_reset_confirm", args=["token-inventado"])
+        )
+        self.client.post(
+            link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
+        )
+        self.client.post(
+            link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
+        )
+
+        registros = PasswordResetLog.objects.all()
+        # Se a varredura não viu evento nenhum, o teste não provaria nada.
+        self.assertGreaterEqual(registros.count(), 4)
+
+        proibidos = [self.user.email, token, SENHA, self.SENHA_NOVA]
+        for registro in registros:
+            gravado = " ".join(str(valor) for valor in registro.__dict__.values())
+            for proibido in proibidos:
+                self.assertNotIn(proibido, gravado)
+
+    def test_falha_do_brevo_nao_vaza_o_destinatario_no_log(self):
+        # O Brevo repete o endereço recusado no corpo da resposta. Só o código
+        # HTTP pode chegar ao log.
+        erro = urllib.error.HTTPError("url", 400, "Bad Request", {}, None)
+        erro.read = lambda: f'{{"message":"Invalid recipient {self.user.email}"}}'.encode()
+
+        with self.settings(
+            BREVO_API_KEY="chave-de-teste", BREVO_SENDER_EMAIL="remetente@exemplo.com"
+        ):
+            with patch("urllib.request.urlopen", side_effect=erro):
+                self.client.post(
+                    reverse("accounts:password_reset"), {"email": self.user.email}
+                )
+
+        registro = PasswordResetLog.objects.get(
+            event=PasswordResetLog.Event.EMAIL_FALHOU
+        )
+        self.assertNotIn(self.user.email, registro.detail)
+        self.assertIn("400", registro.detail)
+
+    def test_sem_chave_configurada_em_producao_o_envio_falha(self):
+        # Com DEBUG desligado, chave ausente é erro. Imprimir o link seria
+        # gravar um token válido na saída do servidor.
+        with self.settings(BREVO_API_KEY="", DEBUG=False):
+            with self.assertRaises(FalhaNoEnvio):
+                enviar_link_de_recuperacao(self.user, "https://exemplo/conta/x/")
+
+    # --- texto da interface -------------------------------------------------
+
+    def test_tela_de_envio_informa_o_prazo_exato(self):
+        resposta = self.client.get(reverse("accounts:password_reset_sent"))
+
+        minutos = int(settings.PASSWORD_RESET_TOKEN_TIMEOUT.total_seconds() // 60)
+        self.assertContains(resposta, f"{minutos} minutos")
+
+    def test_tela_de_envio_nao_explica_a_estrategia_anti_enumeracao(self):
+        resposta = self.client.get(reverse("accounts:password_reset_sent"))
+
+        # Explicar a defesa na tela confunde quem só quer a senha de volta e
+        # sinaliza a existência do controle para quem procura brecha.
+        self.assertNotContains(resposta, "proposital")
+        self.assertNotContains(resposta, "descobrir quem tem conta")

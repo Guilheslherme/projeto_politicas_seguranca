@@ -219,6 +219,37 @@ AXES_LOCKOUT_TEMPLATE = "accounts/lockout.html"
 
 
 # ---------------------------------------------------------------------------
+# Recuperação de senha (requisitos 2.1 a 2.7)
+# ---------------------------------------------------------------------------
+
+# Prazo de validade do link enviado por e-mail. Tempo suficiente para a
+# mensagem chegar, mesmo com a lentidão do plano gratuito, e curto o bastante
+# para limitar a janela em que um link vazado — histórico do navegador, e-mail
+# encaminhado, caixa de entrada compartilhada — ainda serviria para alguém.
+PASSWORD_RESET_TOKEN_TIMEOUT = timedelta(minutes=30)
+
+# Limite de pedidos de recuperação para o mesmo e-mail dentro da janela. Sem
+# isso a tela viraria um disparador aberto de mensagens: qualquer pessoa
+# poderia usar o formulário para inundar a caixa de entrada de outra, à custa
+# da cota de envio do projeto.
+PASSWORD_RESET_MAX_REQUESTS = 3
+PASSWORD_RESET_REQUEST_WINDOW = timedelta(minutes=15)
+
+# Envio pela API HTTP do Brevo. A chave fica em variável de ambiente, fora do
+# repositório: se estivesse no código, qualquer pessoa com acesso ao histórico
+# do Git poderia enviar mensagens em nome do projeto.
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "")
+BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "Health In Sight")
+
+# Endereço público usado para montar o link do e-mail. Vem da configuração e
+# não do cabeçalho Host da requisição, que é controlado por quem chama e
+# permitiria apontar o link para um site falso. Em produção precisa apontar
+# para o endereço https do Render.
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8000")
+
+
+# ---------------------------------------------------------------------------
 # Sessões (requisitos 1.9 e 1.10)
 # ---------------------------------------------------------------------------
 SESSION_COOKIE_AGE = 900            # 15 minutos
@@ -234,6 +265,38 @@ SESSION_COOKIE_SAMESITE = "Lax"     # mitiga CSRF
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "accounts:profile"
 LOGOUT_REDIRECT_URL = "home"
+
+
+# ---------------------------------------------------------------------------
+# Registro de eventos (requisitos 2.6 e 2.7)
+# ---------------------------------------------------------------------------
+# A trilha de auditoria fica no banco, no modelo PasswordResetLog. Esta
+# configuração faz o mesmo evento sair também na saída padrão, que é onde o
+# Render coleta os logs do serviço, servindo de segunda cópia fora do banco.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "auditoria": {
+            "format": "[{asctime}] {levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "auditoria",
+        },
+    },
+    "loggers": {
+        # Vale para todos os aplicativos do projeto, que ficam sob "apps.".
+        "apps": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
 
 
 if not DEBUG:

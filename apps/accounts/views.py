@@ -3,19 +3,30 @@ import io
 from datetime import datetime
 
 import qrcode
+from axes.helpers import get_client_ip_address
+from axes.utils import reset as axes_reset
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView, LogoutView
 from django.shortcuts import redirect, render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django_otp import login as otp_login
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
-from .forms import EmailAuthenticationForm, OTPTokenForm, RegistrationForm
-from .models import User
+from apps.audit.models import PasswordResetLog
+
+from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
+from .forms import (
+    EmailAuthenticationForm,
+    NewPasswordForm,
+    OTPTokenForm,
+    PasswordResetRequestForm,
+    RegistrationForm,
+)
+from .models import PasswordResetToken, User
 
 #nesta pagina que acontece o 2FA com TOTP, cadastro, a ativação e desativação dos 2 fatores e mostra o perfil do usuario.
 PENDING_USER_KEY = "pre_2fa_user_id"
@@ -189,3 +200,154 @@ class SecureLogoutView(LogoutView):
     """O logout do Django apaga a sessão do banco, não só o cookie."""
 
     next_page = reverse_lazy("home")
+
+# ---------------------------------------------------------------------------
+# Recuperação de senha (requisitos 2.1 a 2.7)
+# ---------------------------------------------------------------------------
+
+# Cada situação de token recusado vira um evento no log e uma explicação na
+# tela. Um token cancelado por pedido mais novo entra como inexistente: para
+# quem clicou, o link simplesmente não vale mais.
+FALHAS_DO_TOKEN = {
+    PasswordResetToken.SITUACAO_INEXISTENTE: (
+        PasswordResetLog.Event.TOKEN_INVALIDO,
+        "Este link não é válido. Ele pode ter sido substituído por um pedido "
+        "mais recente ou copiado pela metade.",
+    ),
+    PasswordResetToken.SITUACAO_EXPIRADO: (
+        PasswordResetLog.Event.TOKEN_EXPIRADO,
+        "Este link expirou. Por segurança, cada link vale por tempo limitado.",
+    ),
+    PasswordResetToken.SITUACAO_JA_USADO: (
+        PasswordResetLog.Event.TOKEN_JA_USADO,
+        "Este link já foi usado para trocar a senha. Cada link serve uma vez só.",
+    ),
+}
+
+
+def _excedeu_o_limite_de_pedidos(user):
+    """Diz se aquela conta já esgotou os pedidos permitidos na janela.
+
+    Precisa ser consultada antes de registrar o pedido atual, senão ele entra
+    na própria contagem e o limite dispara um pedido cedo demais.
+
+    A contagem é por conta, e não pelo endereço digitado, porque o log não
+    guarda mais o e-mail. Endereço sem conta não precisa de limite: nenhuma
+    mensagem é enviada nesse caso, então não há caixa de entrada para inundar.
+    """
+    # A contagem sai da própria trilha de auditoria, sem precisar de outra
+    # tabela só para isso.
+    desde = timezone.now() - settings.PASSWORD_RESET_REQUEST_WINDOW
+    anteriores = PasswordResetLog.objects.filter(
+        event=PasswordResetLog.Event.SOLICITADO,
+        user=user,
+        created_at__gte=desde,
+    ).count()
+    return anteriores >= settings.PASSWORD_RESET_MAX_REQUESTS
+
+
+def password_reset_request(request):
+    """Etapa 1: a pessoa informa o e-mail e recebe o link."""
+    form = PasswordResetRequestForm(request.POST or None)
+
+    if request.method == "POST" and form.is_valid():
+        email = form.cleaned_data["email"]
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+
+        # A checagem vem antes do registro, e o registro vem antes de qualquer
+        # desvio: todo pedido entra na trilha de auditoria, inclusive os
+        # recusados pelo limite (requisito 2.6). Um pedido para endereço sem
+        # conta é registrado com usuário nulo.
+        excedeu = user is not None and _excedeu_o_limite_de_pedidos(user)
+
+        PasswordResetLog.registrar(
+            request, PasswordResetLog.Event.SOLICITADO, user
+        )
+
+        if excedeu:
+            PasswordResetLog.registrar(
+                request,
+                PasswordResetLog.Event.LIMITE_EXCEDIDO,
+                user,
+                detail=f"acima de {settings.PASSWORD_RESET_MAX_REQUESTS} pedidos na janela",
+            )
+        elif user is not None:
+            _, token_puro = PasswordResetToken.emitir(
+                user, ip=get_client_ip_address(request)
+            )
+            link = settings.APP_BASE_URL.rstrip("/") + reverse(
+                "accounts:password_reset_confirm", args=[token_puro]
+            )
+            try:
+                enviar_link_de_recuperacao(user, link)
+            except FalhaNoEnvio as erro:
+                # O token continua válido: a pessoa pode pedir outro link, e o
+                # anterior será cancelado na hora da emissão.
+                # A mensagem de FalhaNoEnvio é montada pelo próprio projeto e
+                # traz apenas o motivo técnico, sem o corpo da resposta do
+                # Brevo, que costuma repetir o endereço do destinatário.
+                PasswordResetLog.registrar(
+                    request,
+                    PasswordResetLog.Event.EMAIL_FALHOU,
+                    user,
+                    detail=str(erro),
+                )
+            else:
+                PasswordResetLog.registrar(
+                    request, PasswordResetLog.Event.EMAIL_ENVIADO, user
+                )
+
+        # A resposta é a mesma nos quatro caminhos acima, inclusive quando o
+        # e-mail não existe ou o envio falhou. Uma resposta diferente para conta
+        # existente revelaria quem tem cadastro no sistema, que é o mesmo motivo
+        # da mensagem genérica do login.
+        return redirect("accounts:password_reset_sent")
+
+    return render(request, "accounts/password_reset_request.html", {"form": form})
+
+
+def password_reset_confirm(request, token):
+    """Etapa 2: o link é conferido e a senha nova é definida."""
+    registro, situacao = PasswordResetToken.resolver(token)
+
+    if situacao != PasswordResetToken.SITUACAO_VALIDO:
+        evento, mensagem = FALHAS_DO_TOKEN[situacao]
+        # O token recusado não entra no log: registrar o valor do link daria a
+        # quem lesse a trilha exatamente o que falta para usá-lo, no caso de um
+        # link ainda dentro do prazo. O evento e a conta bastam para auditar.
+        PasswordResetLog.registrar(
+            request, evento, registro.user if registro else None
+        )
+        # A tela de erro não traz o formulário de senha nova: um link recusado
+        # não abre caminho para trocar coisa alguma (requisito 2.5).
+        return render(
+            request,
+            "accounts/password_reset_invalid.html",
+            {"mensagem": mensagem},
+            status=400,
+        )
+
+    form = NewPasswordForm(registro.user, request.POST or None)
+
+    if request.method == "POST" and form.is_valid():
+        # Trocar a senha muda o hash de sessão do Django, então toda sessão
+        # aberta daquela conta deixa de valer — inclusive a de quem tivesse
+        # entrado com a senha antiga.
+        form.save()
+
+        # A ordem importa: o token é gasto depois da troca, e não antes dela.
+        # Se a gravação da senha falhasse, o token continuaria valendo.
+        registro.marcar_como_usado()
+
+        # Quem esqueceu a senha costuma ter errado várias vezes antes de pedir
+        # o link, e ficaria bloqueado pelo axes logo após redefini-la. Liberar
+        # aqui é seguro: só chega neste ponto quem provou ter acesso à caixa de
+        # entrada da conta.
+        axes_reset(username=registro.user.email)
+
+        PasswordResetLog.registrar(
+            request, PasswordResetLog.Event.SENHA_REDEFINIDA, registro.user
+        )
+        return redirect("accounts:password_reset_done")
+
+    return render(request, "accounts/password_reset_confirm.html", {"form": form})
