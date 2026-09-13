@@ -91,3 +91,9 @@ button, .btn-primary, .btn-danger {
 @media (max-width: 560px) {
   .data-list { grid-template-columns: 1fr; }
 }
+/* Tabelas da política de privacidade e da consulta aos dados (requisito 4) */
+.table-wrap { overflow-x: auto; margin: 0.6rem 0 1rem; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.data-table th, .data-table td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid #e4e7eb; vertical-align: top; }
+.data-table th { color: var(--muted); font-weight: 600; }
+.checkbox { display: flex; gap: 0.5rem; align-items: center; font-weight: 400; }

@@ -10,11 +10,14 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import base64
+import binascii
 import os
 import sys
 from datetime import timedelta
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -23,11 +26,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "minha chave gerada para desenvolvimento")
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
+
+# SECURITY WARNING: keep the secret key used in production secret!
+# A chave que assina cookies, tokens de CSRF e mensagens vem só do ambiente
+# (requisito 3.6). Em produção a ausência dela derruba a inicialização: cair
+# silenciosamente num valor fixo, escrito aqui no código e visível no GitHub,
+# daria a qualquer pessoa a chave de assinatura do sistema publicado.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY:
+    if not DEBUG and "test" not in sys.argv:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY nao definida no ambiente.")
+    SECRET_KEY = "minha chave gerada para desenvolvimento"
 
 # Endereços que a aplicação aceita atender, separados por vírgula na variável
 # de ambiente. Publicar em outro domínio passa a ser mudança de configuração no
@@ -83,6 +94,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django_otp.middleware.OTPMiddleware",
+    # Leva quem esta logado sem aceite da politica vigente a tela de aceite.
+    "apps.privacy.middleware.ConsentRequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "axes.middleware.AxesMiddleware",
@@ -238,6 +251,41 @@ OTP_TOTP_THROTTLE_FACTOR = 1
 # Tempo máximo entre a senha correta e a validação do código.
 TWO_FACTOR_PENDING_TIMEOUT = timedelta(minutes=5)
 
+# O painel administrativo do django-otp mostra, por padrão, o segredo de cada
+# dispositivo e um link para o QR Code. Com isso, qualquer pessoa da equipe
+# poderia cadastrar o 2FA de um usuário no próprio celular. Ninguém precisa ver
+# esse segredo depois que ele é lido pelo aplicativo autenticador.
+OTP_ADMIN_HIDE_SENSITIVE_DATA = True
+
+
+# ---------------------------------------------------------------------------
+# Criptografia de dados em repouso (requisitos 3.4 a 3.6)
+# ---------------------------------------------------------------------------
+
+if "test" in sys.argv:
+    # Os testes usam uma chave sorteada a cada execução, junto do banco em
+    # memória. Nenhuma chave de teste fica escrita no repositório.
+    FIELD_ENCRYPTION_KEY = os.urandom(32)
+else:
+    # A chave vem só do ambiente: do .env na máquina local e das variáveis do
+    # painel no Render. O .env está no .gitignore, então a chave nunca chega ao
+    # GitHub. São 32 bytes, codificados em base64 para caber em uma variável.
+    try:
+        FIELD_ENCRYPTION_KEY = base64.urlsafe_b64decode(
+            os.environ.get("FIELD_ENCRYPTION_KEY", "")
+        )
+    except (binascii.Error, ValueError):
+        FIELD_ENCRYPTION_KEY = b""
+
+    # Sem chave válida a aplicação não sobe, em desenvolvimento e em produção.
+    # A alternativa seria gravar segredos em texto puro ou deixar o 2FA
+    # inutilizável, e as duas falhariam em silêncio.
+    if len(FIELD_ENCRYPTION_KEY) != 32:
+        raise ImproperlyConfigured(
+            "FIELD_ENCRYPTION_KEY ausente ou invalida: precisa ter 32 bytes em "
+            "base64. Veja o .env.example para gerar uma."
+        )
+
 
 # ---------------------------------------------------------------------------
 # Proteção contra força bruta (requisito 1.11)
@@ -283,6 +331,16 @@ BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "Health In Sight")
 # permitiria apontar o link para um site falso. Em produção precisa apontar
 # para o endereço https do Render.
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8000")
+
+
+# ---------------------------------------------------------------------------
+# Conformidade com a LGPD (requisitos 4.4 a 4.7)
+# ---------------------------------------------------------------------------
+
+# Versão do texto da Política de Privacidade. Cada aceite grava a versão que foi
+# aceita. Mudar este valor ao alterar o texto faz com que todas as contas sejam
+# levadas a ler e aceitar a versão nova antes de continuar.
+PRIVACY_POLICY_VERSION = "1.0"
 
 
 # ---------------------------------------------------------------------------

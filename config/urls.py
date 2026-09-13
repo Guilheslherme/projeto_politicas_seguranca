@@ -23,5 +23,6 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", TemplateView.as_view(template_name="home.html"), name="home"),
     path("conta/", include("apps.accounts.urls")),
+    path("privacidade/", include("apps.privacy.urls")),
 ]
     

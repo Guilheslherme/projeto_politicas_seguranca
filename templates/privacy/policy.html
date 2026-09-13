@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Política de Privacidade | Health In Sight{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Política de Privacidade</h1>
+  <p class="muted small">Versão {{ versao }}</p>
+
+  <p>
+    O Health In Sight é um portal informativo. O conteúdo sobre saúde é público
+    e igual para todo mundo, e pode ser lido sem criar conta. A conta existe
+    apenas para quem quiser acessar a área logada.
+  </p>
+
+  <h2>O que não coletamos</h2>
+  <p>
+    Nenhum dado de saúde: condições, sintomas, histórico, exames ou interesses
+    por doença. Também não pedimos CPF, telefone, endereço, data de nascimento
+    ou localização, e não usamos cookies de publicidade ou rastreamento.
+  </p>
+
+  <h2>O que coletamos e por quê</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Dado</th><th>Finalidade</th><th>Base legal (LGPD)</th><th>Guarda</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Nome completo</td>
+          <td>Identificar você na conta e nas mensagens sobre ela</td>
+          <td>Consentimento (Art. 7º, I)</td>
+          <td>Até a exclusão da conta</td>
+        </tr>
+        <tr>
+          <td>E-mail</td>
+          <td>Entrar na conta e receber o link de recuperação de senha</td>
+          <td>Consentimento (Art. 7º, I)</td>
+          <td>Até a exclusão da conta</td>
+        </tr>
+        <tr>
+          <td>Senha</td>
+          <td>Confirmar sua identidade. Guardamos só o hash Argon2id, que não permite recuperar a senha</td>
+          <td>Consentimento (Art. 7º, I)</td>
+          <td>Até a exclusão da conta</td>
+        </tr>
+        <tr>
+          <td>Segredo da verificação em duas etapas</td>
+          <td>Conferir o código do aplicativo autenticador. Existe só se você ativar, e fica cifrado com AES-256</td>
+          <td>Consentimento (Art. 7º, I)</td>
+          <td>Até desativar a verificação ou excluir a conta</td>
+        </tr>
+        <tr>
+          <td>Data de cadastro e da última troca de senha</td>
+          <td>Controle e segurança da conta</td>
+          <td>Consentimento (Art. 7º, I)</td>
+          <td>Até a exclusão da conta</td>
+        </tr>
+        <tr>
+          <td>Registro deste aceite: finalidade, versão da política e data</td>
+          <td>Comprovar que você aceitou esta política</td>
+          <td>Exercício regular de direitos (Art. 7º, VI)</td>
+          <td>Após a exclusão, fica sem nenhum vínculo com você</td>
+        </tr>
+        <tr>
+          <td>Endereço IP, navegador, data e hora de acessos, de tentativas malsucedidas e de pedidos de recuperação de senha</td>
+          <td>Detectar e bloquear tentativas de invasão da sua conta</td>
+          <td>Legítimo interesse (Art. 7º, IX)</td>
+          <td>Até a exclusão da conta. Dos pedidos de recuperação, fica só o tipo de evento e a data, sem IP e sem vínculo com você</td>
+        </tr>
+        <tr>
+          <td>Cookie de sessão</td>
+          <td>Manter você conectado enquanto usa o site</td>
+          <td>Necessário para o funcionamento da conta</td>
+          <td>Expira após 15 minutos sem uso ou ao fechar o navegador</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Com quem os dados são compartilhados</h2>
+  <p>
+    Não vendemos nem cedemos dados. Eles passam apenas pelos serviços que operam
+    o sistema: Render (hospedagem), Aiven (banco de dados) e Brevo, que recebe
+    seu nome e e-mail somente para entregar a mensagem de recuperação de senha.
+  </p>
+
+  <h2>Seus direitos</h2>
+  <p>Com a conta aberta, você pode a qualquer momento:</p>
+  <ul>
+    <li><strong>consultar</strong> tudo o que guardamos sobre você;</li>
+    <li><strong>exportar</strong> esses dados em um arquivo JSON;</li>
+    <li><strong>revogar o consentimento e excluir a conta</strong>. Como a conta depende deste consentimento, as duas coisas acontecem juntas, e os dados pessoais são apagados.</li>
+  </ul>
+  {% if user.is_authenticated %}
+    <p><a class="btn-primary" href="{% url 'privacy:my_data' %}">Ver meus dados</a></p>
+  {% endif %}
+
+  <h2>Mudanças nesta política</h2>
+  <p>
+    Se o texto mudar, a versão muda junto, e pediremos um novo aceite antes que
+    você continue usando a conta.
+  </p>
+</div>
+{% endblock %}

@@ -1,11 +1,14 @@
 import hashlib
 import secrets
+from binascii import unhexlify
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone
+from django_otp.plugins.otp_totp.models import TOTPDevice
 
+from .crypto import cifrar, decifrar, esta_cifrado
 from .managers import UserManager
 
 
@@ -199,3 +202,52 @@ class PasswordResetToken(models.Model):
         PasswordResetToken.objects.filter(
             user=self.user, used_at__isnull=True, invalidated_at__isnull=True
         ).update(invalidated_at=agora)
+
+
+"""Segredo do 2FA cifrado em repouso (requisitos 3.4 e 3.5)."""
+
+def contexto_do_segredo_2fa(user_id):
+    """Contexto de autenticação usado ao cifrar o segredo de uma conta.
+
+    Fica em função própria porque a migração que cifra os segredos já
+    existentes precisa produzir exatamente o mesmo valor.
+    """
+    return f"totp:{user_id}"
+
+
+class EncryptedTOTPDevice(TOTPDevice):
+    """Dispositivo TOTP que guarda o segredo cifrado com AES-256-GCM.
+
+    O django-otp grava o segredo do aplicativo autenticador em texto puro. Esse
+    segredo é o dado mais perigoso do banco: com ele, qualquer pessoa gera os
+    mesmos códigos de 6 dígitos que o celular do usuário, e a segunda etapa do
+    login deixa de proteger alguma coisa. Um vazamento do banco, de um backup
+    ou de uma consulta por injeção de SQL entregaria o 2FA de todas as contas.
+
+    É um modelo proxy: usa a mesma tabela do django-otp, sem duplicar dados. Só
+    muda o que entra e o que sai do campo "key".
+    """
+
+    class Meta:
+        proxy = True
+        verbose_name = "dispositivo 2FA cifrado"
+        verbose_name_plural = "dispositivos 2FA cifrados"
+
+    def save(self, *args, **kwargs):
+        # O django-otp sorteia o segredo em hexadecimal na criação. Antes de ir
+        # para o banco ele é convertido de volta para os 20 bytes originais e
+        # cifrado. Um segredo que já está cifrado passa direto, então salvar o
+        # mesmo dispositivo de novo não cifra duas vezes.
+        if not esta_cifrado(self.key):
+            self.key = cifrar(unhexlify(self.key), contexto_do_segredo_2fa(self.user_id))
+        super().save(*args, **kwargs)
+
+    @property
+    def bin_key(self):
+        """Segredo decifrado, apenas na memória e apenas quando é usado.
+
+        É a única propriedade que o django-otp usa para ler o segredo, tanto ao
+        conferir um código quanto ao montar o QR Code. Sobrescrevê-la basta para
+        que todo o resto da biblioteca funcione sem saber que existe cifragem.
+        """
+        return decifrar(self.key, contexto_do_segredo_2fa(self.user_id))

@@ -45,6 +45,8 @@ class OTPTokenForm(forms.Form):
 
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
+from django.urls import reverse
+from django.utils.html import format_html
 
 from .models import User
 
@@ -65,6 +67,16 @@ class RegistrationForm(UserCreationForm):
     class Meta:
         model = User
         fields = ("email", "full_name")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # O aceite só vale se a pessoa tiver como ler o que está aceitando
+        # (Art. 8º e 9º da LGPD). O link abre a política em outra aba para não
+        # perder o que já foi preenchido.
+        self.fields["accept_privacy_policy"].help_text = format_html(
+            '<a href="{}" target="_blank" rel="noopener">Ler a Política de Privacidade</a>',
+            reverse("privacy:policy"),
+        )
 
     def clean_email(self):
         email = self.cleaned_data["email"].lower().strip()

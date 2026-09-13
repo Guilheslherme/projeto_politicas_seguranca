@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Meus dados | Health In Sight{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>Meus dados</h1>
+  <p class="muted">
+    Tudo o que o Health In Sight guarda sobre a sua conta, conforme o Art. 18 da LGPD.
+  </p>
+
+  <form method="post" action="{% url 'privacy:export_data' %}" class="inline-form">
+    {% csrf_token %}
+    <button type="submit" class="btn-primary">Exportar em JSON</button>
+  </form>
+  <a class="btn-danger" href="{% url 'privacy:delete_account' %}">Revogar consentimento e excluir conta</a>
+</div>
+
+<div class="card">
+  <h2>Conta</h2>
+  <dl class="data-list">
+    <dt>Nome completo</dt><dd>{{ dados.conta.nome_completo }}</dd>
+    <dt>E-mail</dt><dd>{{ dados.conta.email }}</dd>
+    <dt>Cadastrado em</dt><dd>{{ dados.conta.cadastrado_em|date:"d/m/Y H:i" }}</dd>
+    <dt>Última troca de senha</dt><dd>{{ dados.conta.ultima_troca_de_senha|date:"d/m/Y H:i"|default:"—" }}</dd>
+    <dt>Verificação em duas etapas</dt><dd>{{ dados.conta.verificacao_em_duas_etapas }}</dd>
+  </dl>
+</div>
+
+<div class="card">
+  <h2>Credenciais</h2>
+  <dl class="data-list">
+    <dt>Senha</dt><dd>{{ dados.credenciais.senha }}</dd>
+    <dt>Segredo do 2FA</dt><dd>{{ dados.credenciais.segredo_do_2fa }}</dd>
+  </dl>
+</div>
+
+<div class="card">
+  <h2>Consentimentos</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Finalidade</th><th>Versão</th><th>Aceito em</th><th>Situação</th></tr></thead>
+      <tbody>
+        {% for c in dados.consentimentos %}
+          <tr>
+            <td>{{ c.finalidade }}</td>
+            <td>{{ c.versao_da_politica }}</td>
+            <td>{{ c.aceito_em|date:"d/m/Y H:i" }}</td>
+            <td>{% if c.revogado_em %}Revogado em {{ c.revogado_em|date:"d/m/Y H:i" }}{% else %}Vigente{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4">Nenhum registro.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Registros de segurança</h2>
+
+  <h3>Acessos realizados</h3>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Entrada</th><th>Saída</th><th>Endereço IP</th><th>Navegador</th></tr></thead>
+      <tbody>
+        {% for a in dados.registros_de_seguranca.acessos_realizados %}
+          <tr>
+            <td>{{ a.entrada|date:"d/m/Y H:i" }}</td>
+            <td>{{ a.saida|date:"d/m/Y H:i"|default:"—" }}</td>
+            <td class="mono">{{ a.endereco_ip|default:"—" }}</td>
+            <td class="small">{{ a.navegador }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4">Nenhum registro.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Tentativas de acesso malsucedidas</h3>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Última tentativa</th><th>Quantidade</th><th>Endereço IP</th><th>Navegador</th></tr></thead>
+      <tbody>
+        {% for t in dados.registros_de_seguranca.tentativas_de_acesso_malsucedidas %}
+          <tr>
+            <td>{{ t.ultima_tentativa|date:"d/m/Y H:i" }}</td>
+            <td>{{ t.quantidade }}</td>
+            <td class="mono">{{ t.endereco_ip|default:"—" }}</td>
+            <td class="small">{{ t.navegador }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4">Nenhum registro.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Recuperação de senha</h3>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Evento</th><th>Data</th><th>Endereço IP</th></tr></thead>
+      <tbody>
+        {% for r in dados.registros_de_seguranca.recuperacao_de_senha %}
+          <tr>
+            <td>{{ r.evento }}</td>
+            <td>{{ r.data|date:"d/m/Y H:i" }}</td>
+            <td class="mono">{{ r.endereco_ip|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="3">Nenhum registro.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

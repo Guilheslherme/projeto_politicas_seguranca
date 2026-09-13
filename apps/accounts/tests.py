@@ -1,3 +1,5 @@
+import importlib
+import os
 import time
 import urllib.error
 from datetime import timedelta
@@ -6,7 +8,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django_otp.oath import TOTP
@@ -16,9 +18,11 @@ from axes.models import AccessAttempt
 from axes.utils import reset
 
 from apps.audit.models import PasswordResetLog
+from apps.privacy.models import ConsentRecord
 
+from .crypto import FalhaNaDecifragem, cifrar, decifrar
 from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
-from .models import PasswordResetToken
+from .models import EncryptedTOTPDevice, PasswordResetToken
 
 User = get_user_model()
 
@@ -76,9 +80,12 @@ class DuasEtapasTests(TestCase):
             full_name="Usuario Com 2FA",
             password=SENHA,
         )
-        self.device = TOTPDevice.objects.create(
+        self.device = EncryptedTOTPDevice.objects.create(
             user=self.user, name="teste", confirmed=True
         )
+        # Uma conta criada pelo formulário de cadastro já nasce com o aceite da
+        # política. Sem ele, o perfil levaria à tela de consentimento.
+        ConsentRecord.registrar_aceite(self.user)
         reset()
 
     def test_senha_correta_ainda_nao_cria_sessao(self):
@@ -559,3 +566,144 @@ class RecuperacaoDeSenhaTests(TestCase):
         # sinaliza a existência do controle para quem procura brecha.
         self.assertNotContains(resposta, "proposital")
         self.assertNotContains(resposta, "descobrir quem tem conta")
+
+
+class CriptografiaEmRepousoTests(TestCase):
+    """Requisitos 3.4, 3.5 e 3.6."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="cifrado@exemplo.com",
+            full_name="Usuario Cifrado",
+            password=SENHA,
+        )
+        self.device = EncryptedTOTPDevice.objects.create(
+            user=self.user, name="teste", confirmed=True
+        )
+
+    def valor_gravado_no_banco(self, device):
+        # Lido pelo modelo original do django-otp, sem a camada que decifra: é
+        # exatamente o que apareceria em um vazamento da tabela.
+        return TOTPDevice.objects.get(pk=device.pk).key
+
+    def test_segredo_do_2fa_nao_fica_em_texto_puro(self):
+        gravado = self.valor_gravado_no_banco(self.device)
+        segredo_em_hex = self.device.bin_key.hex()
+
+        self.assertTrue(gravado.startswith("aes256gcm$"))
+        self.assertNotIn(segredo_em_hex, gravado)
+
+    def test_codigo_do_autenticador_continua_valido(self):
+        # Cifrar não pode quebrar o 2FA: o código gerado a partir do segredo
+        # decifrado precisa ser aceito normalmente.
+        self.assertTrue(self.device.verify_token(codigo_atual(self.device)))
+
+    def test_texto_cifrado_cabe_no_campo_do_django_otp(self):
+        # O campo "key" do django-otp tem 80 caracteres. Se o texto cifrado não
+        # coubesse, o MySQL recusaria a gravação em modo estrito.
+        self.assertLessEqual(len(self.valor_gravado_no_banco(self.device)), 80)
+
+    def test_mesmo_segredo_gera_textos_cifrados_diferentes(self):
+        # Nonce aleatório a cada cifragem: dois valores iguais não produzem o
+        # mesmo texto, então o banco não revela quais contas compartilham dados.
+        self.assertNotEqual(cifrar(b"segredo", "c"), cifrar(b"segredo", "c"))
+
+    def test_valor_alterado_no_banco_e_recusado(self):
+        gravado = self.valor_gravado_no_banco(self.device)
+        # Troca um único caractere do meio do texto cifrado.
+        meio = len(gravado) // 2
+        alterado = gravado[:meio] + ("A" if gravado[meio] != "A" else "B") + gravado[meio + 1:]
+        TOTPDevice.objects.filter(pk=self.device.pk).update(key=alterado)
+
+        device = EncryptedTOTPDevice.objects.get(pk=self.device.pk)
+        with self.assertRaises(FalhaNaDecifragem):
+            device.bin_key
+
+    def test_segredo_copiado_para_outra_conta_nao_decifra(self):
+        # O contexto amarra o texto cifrado à conta dona. Copiar o valor para
+        # a linha de outra pessoa não transfere o 2FA.
+        outro = User.objects.create_user(
+            email="copia@exemplo.com", full_name="Outra Conta", password=SENHA
+        )
+        copia = EncryptedTOTPDevice.objects.create(user=outro, name="copia")
+        TOTPDevice.objects.filter(pk=copia.pk).update(
+            key=self.valor_gravado_no_banco(self.device)
+        )
+
+        copia.refresh_from_db()
+        with self.assertRaises(FalhaNaDecifragem):
+            copia.bin_key
+
+    def test_chave_errada_nao_decifra(self):
+        valor = cifrar(b"segredo", "contexto")
+        with override_settings(FIELD_ENCRYPTION_KEY=os.urandom(32)):
+            with self.assertRaises(FalhaNaDecifragem):
+                decifrar(valor, "contexto")
+
+    def test_texto_puro_nao_e_aceito_como_cifrado(self):
+        with self.assertRaises(FalhaNaDecifragem):
+            decifrar("3132333435363738393031323334353637383930", "contexto")
+
+    def test_migracao_cifra_segredos_gravados_antes(self):
+        # Simula uma conta que ativou o 2FA antes do requisito 3.4, com o
+        # segredo gravado em texto puro pelo modelo original do django-otp.
+        antigo = TOTPDevice.objects.create(user=self.user, name="antigo")
+        segredo_original = antigo.key
+        self.assertFalse(antigo.key.startswith("aes256gcm$"))
+
+        migracao = importlib.import_module(
+            "apps.accounts.migrations.0004_cifra_segredos_2fa_existentes"
+        )
+
+        class EditorFalso:
+            connection = type("Conexao", (), {"alias": "default"})()
+
+        from django.apps import apps as registro
+        migracao.cifrar_segredos(registro, EditorFalso())
+
+        convertido = EncryptedTOTPDevice.objects.get(pk=antigo.pk)
+        self.assertTrue(convertido.key.startswith("aes256gcm$"))
+        # O segredo continua o mesmo, só mudou a forma de guardar: o celular
+        # que já estava configurado segue gerando códigos válidos.
+        self.assertEqual(convertido.bin_key.hex(), segredo_original)
+
+
+class ComunicacaoSeguraTests(TestCase):
+    """Requisitos 3.1 e 3.2.
+
+    Os ajustes de HTTPS só ligam com DEBUG desligado. Aqui eles são ativados à
+    força para provar o comportamento que o Render tem em produção.
+    """
+
+    @override_settings(SECURE_SSL_REDIRECT=True)
+    def test_http_e_redirecionado_para_https_com_301(self):
+        resposta = self.client.get("/", secure=False)
+
+        self.assertEqual(resposta.status_code, 301)
+        self.assertTrue(resposta["Location"].startswith("https://"))
+
+    @override_settings(SECURE_SSL_REDIRECT=True)
+    def test_https_e_atendido_sem_redirecionamento(self):
+        resposta = self.client.get("/", secure=True)
+        self.assertEqual(resposta.status_code, 200)
+
+    @override_settings(
+        SECURE_HSTS_SECONDS=31536000,
+        SECURE_HSTS_INCLUDE_SUBDOMAINS=True,
+        SECURE_HSTS_PRELOAD=True,
+    )
+    def test_resposta_https_envia_hsts(self):
+        resposta = self.client.get("/", secure=True)
+        self.assertEqual(
+            resposta["Strict-Transport-Security"],
+            "max-age=31536000; includeSubDomains; preload",
+        )
+
+    @override_settings(SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+                       SECURE_SSL_REDIRECT=True)
+    def test_requisicao_vinda_do_proxy_do_render_nao_entra_em_loop(self):
+        # O Render entrega a requisição ao Django em HTTP, com o cabeçalho
+        # avisando que o navegador usou HTTPS. Sem SECURE_PROXY_SSL_HEADER, o
+        # Django redirecionaria para https de novo, para sempre.
+        resposta = self.client.get("/", secure=False, HTTP_X_FORWARDED_PROTO="https")
+        self.assertEqual(resposta.status_code, 200)

@@ -10,13 +10,14 @@ from django.contrib import messages
 from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import LoginView, LogoutView
+from django.db import transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django_otp import login as otp_login
-from django_otp.plugins.otp_totp.models import TOTPDevice
 
 from apps.audit.models import PasswordResetLog
+from apps.privacy.models import ConsentRecord
 
 from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
 from .forms import (
@@ -26,7 +27,9 @@ from .forms import (
     PasswordResetRequestForm,
     RegistrationForm,
 )
-from .models import PasswordResetToken, User
+# EncryptedTOTPDevice no lugar do TOTPDevice do django-otp: mesma tabela, mas
+# o segredo do autenticador sai cifrado com AES-256-GCM (requisito 3.4).
+from .models import EncryptedTOTPDevice, PasswordResetToken, User
 
 #nesta pagina que acontece o 2FA com TOTP, cadastro, a ativação e desativação dos 2 fatores e mostra o perfil do usuario.
 PENDING_USER_KEY = "pre_2fa_user_id"
@@ -63,7 +66,12 @@ def register_view(request):
     form = RegistrationForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        form.save()
+        # A conta e o registro do aceite nascem juntos. Se a gravação do aceite
+        # falhar, a conta também não é criada: não existe conta sem a prova do
+        # consentimento que a autorizou (requisito 4.4).
+        with transaction.atomic():
+            user = form.save()
+            ConsentRecord.registrar_aceite(user)
         messages.success(request, "Conta criada com sucesso. Faça login para continuar.")
         return redirect("accounts:login")
 
@@ -79,7 +87,7 @@ class TwoFactorLoginView(LoginView):
 
     def form_valid(self, form):
         user = form.get_user()
-        device = TOTPDevice.objects.filter(user=user, confirmed=True).first()
+        device = EncryptedTOTPDevice.objects.filter(user=user, confirmed=True).first()
 
         if device is not None:
             # Senha correta, mas a sessão ainda não é criada.
@@ -122,7 +130,7 @@ def otp_verify(request):
     form = OTPTokenForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        device = TOTPDevice.objects.filter(user=user, confirmed=True).first()
+        device = EncryptedTOTPDevice.objects.filter(user=user, confirmed=True).first()
         if device and device.verify_token(form.cleaned_data["token"]):
             backend = request.session.get(PENDING_BACKEND_KEY)
             _clear_pending(request)
@@ -141,9 +149,9 @@ def otp_verify(request):
 
 @login_required
 def otp_setup(request):
-    device = TOTPDevice.objects.filter(user=request.user, confirmed=False).first()
+    device = EncryptedTOTPDevice.objects.filter(user=request.user, confirmed=False).first()
     if device is None:
-        device = TOTPDevice.objects.create(
+        device = EncryptedTOTPDevice.objects.create(
             user=request.user, name="default", confirmed=False
         )
 
@@ -174,7 +182,7 @@ def otp_setup(request):
 @login_required
 def otp_disable(request):
     if request.method == "POST":
-        TOTPDevice.objects.filter(user=request.user).delete()
+        EncryptedTOTPDevice.objects.filter(user=request.user).delete()
         request.user.two_factor_enabled = False
         request.user.save(update_fields=["two_factor_enabled"])
         messages.warning(request, "Verificação em duas etapas desativada.")
@@ -183,7 +191,7 @@ def otp_disable(request):
 
 @login_required
 def profile(request):
-    device = TOTPDevice.objects.filter(user=request.user, confirmed=True).first()
+    device = EncryptedTOTPDevice.objects.filter(user=request.user, confirmed=True).first()
     return render(
         request,
         "accounts/profile.html",
@@ -191,6 +199,9 @@ def profile(request):
             "has_2fa": device is not None,
             "session_expiry": request.session.get_expiry_date(),
             "hash_algorithm": request.user.hash_algorithm,
+            # Só o prefixo do valor gravado, que nomeia o algoritmo. O texto
+            # cifrado em si não vai para a tela.
+            "totp_secret_format": device.key.split("$")[0] if device else "",
             "is_verified": request.user.is_verified(),
         },
     )

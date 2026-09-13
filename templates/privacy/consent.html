@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Política de Privacidade | Health In Sight{% endblock %}
+
+{% block content %}
+<div class="card card-narrow">
+  <h1>Aceite da Política de Privacidade</h1>
+
+  <p class="muted">
+    Para continuar usando sua conta, leia e aceite a versão {{ versao }} da
+    Política de Privacidade.
+  </p>
+
+  <p>
+    <a href="{% url 'privacy:policy' %}" target="_blank" rel="noopener">Ler a Política de Privacidade</a>
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <label class="checkbox">
+      {{ form.accept }} {{ form.accept.label }}
+    </label>
+    {{ form.accept.errors }}
+    <button type="submit" class="btn-primary block">Aceitar e continuar</button>
+  </form>
+
+  <p class="muted small">
+    Se não quiser aceitar, você pode
+    <a href="{% url 'privacy:delete_account' %}">excluir sua conta</a>
+    ou simplesmente sair.
+  </p>
+</div>
+{% endblock %}

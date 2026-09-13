@@ -23,6 +23,10 @@
   <p class="muted small">
     Por segurança, sua sessão é encerrada automaticamente após 15 minutos sem uso.
   </p>
+
+  <p class="small">
+    <a href="{% url 'privacy:my_data' %}">Privacidade e meus dados</a>
+  </p>
 </div>
 
 {% if user.is_staff %}
@@ -32,6 +36,8 @@
 
   <dl class="data-list">
     <dt>Algoritmo do hash da senha</dt><dd class="mono">{{ hash_algorithm }}</dd>
+    <dt>Segredo do 2FA no banco</dt>
+    <dd class="mono">{% if totp_secret_format %}{{ totp_secret_format }} (cifrado){% else %}2FA inativo{% endif %}</dd>
     <dt>Sessão expira em</dt><dd>{{ session_expiry }}</dd>
   </dl>
 </div>

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Excluir conta | Health In Sight{% endblock %}
+
+{% block content %}
+<div class="card card-narrow">
+  <h1>Revogar consentimento e excluir conta</h1>
+
+  <p>Esta ação não pode ser desfeita. Ao confirmar:</p>
+  <ul>
+    <li>sua conta, seu nome, seu e-mail, o hash da sua senha e o segredo da verificação em duas etapas são apagados;</li>
+    <li>os registros de acesso e de tentativas de login ligados ao seu e-mail são apagados;</li>
+    <li>dos pedidos de recuperação de senha, fica só o tipo de evento e a data, sem IP e sem vínculo com você;</li>
+    <li>seu consentimento é marcado como revogado, e o registro fica sem nenhum dado que identifique você.</li>
+  </ul>
+
+  <p class="muted small">
+    Se quiser guardar uma cópia antes, use a opção de
+    <a href="{% url 'privacy:my_data' %}">exportar seus dados</a>.
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <label for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+    {{ form.password }}
+    {{ form.password.errors }}
+    <button type="submit" class="btn-danger block">Excluir minha conta</button>
+  </form>
+
+  <p class="small">
+    <a href="{% url 'accounts:profile' %}">Cancelar</a>
+  </p>
+</div>
+{% endblock %}

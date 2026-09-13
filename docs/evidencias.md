@@ -1,6 +1,6 @@
 # Evidências de funcionamento
 
-Comprovação prática dos requisitos dos blocos 1 e 2, demonstrados pelo front-end da aplicação.
+Comprovação prática dos requisitos dos blocos 1 a 4, demonstrados pelo front-end da aplicação.
 
 Aplicação publicada: https://projeto-politicas-seguranca.onrender.com
 
@@ -282,7 +282,7 @@ python manage.py test apps.accounts.tests.RecuperacaoDeSenhaTests
 ```
 
 ```
-Ran 19 tests in 2.070s
+Ran 24 tests in 3.655s
 
 OK
 ```
@@ -295,8 +295,392 @@ OK
 | Uso único e cancelamento | 3 | 2.4 |
 | Recusa de link inválido, expirado e já usado | 3 | 2.5 |
 | Registro em log | 6 | 2.6, 2.7 |
+| Privacidade da trilha e texto da tela de envio | 5 | 2.1, 2.6, 2.7 |
 
-A suíte inteira do aplicativo passou a ter 36 testes, somando os 17 do bloco 1.
 O envio de e-mail é substituído por um espião nos testes: o token em texto puro
 só existe dentro do link, então é ali que o teste precisa olhar, e a substituição
 também impede que a suíte consuma a cota do Brevo.
+
+---
+
+# Bloco 3 — Criptografia e comunicação segura
+
+## 3.1 e 3.2 — HTTPS obrigatório e bloqueio de HTTP
+
+O acesso por HTTP é recusado em três camadas, cada uma cobrindo a falha da
+anterior:
+
+| Camada | Onde | O que faz |
+|---|---|---|
+| 1. Borda do Render | Proxy da Cloudflare, antes do Django | Responde a qualquer requisição HTTP com `301 Moved Permanently` para o endereço `https://` |
+| 2. Django | `SECURE_SSL_REDIRECT = True` | Se uma requisição chegar em HTTP mesmo assim, o `SecurityMiddleware` devolve outro 301 para HTTPS |
+| 3. Navegador | Cabeçalho `Strict-Transport-Security` | Depois da primeira visita, o próprio navegador converte `http://` em `https://` por um ano, sem nem enviar a requisição insegura |
+
+**Como acontece o 301.** O navegador pede `http://projeto-politicas-seguranca.onrender.com/`.
+A borda do Render responde com o código 301 e o cabeçalho `Location` apontando
+para a mesma URL em `https://`. O 301 significa redirecionamento permanente, e
+por isso o navegador passa a ir direto para o HTTPS. Na nova conexão acontece o
+handshake TLS e só então a requisição chega ao Django.
+
+A saída abaixo mostra que o 301 visto de fora vem da borda (`Server: cloudflare`),
+e não do Django. A segunda camada não aparece nesse teste justamente porque a
+primeira já resolveu. Por isso ela é comprovada por teste automatizado.
+
+O Render encerra o TLS na borda e entrega a requisição ao Django em HTTP, com o
+cabeçalho `X-Forwarded-Proto: https`. O `SECURE_PROXY_SSL_HEADER` diz ao Django
+para confiar nesse cabeçalho. Sem ele, o Django veria toda requisição como HTTP
+e a redirecionaria para HTTPS de novo, para sempre.
+
+**Comando:**
+
+```bash
+curl -sI http://projeto-politicas-seguranca.onrender.com/
+```
+
+**Saída real:**
+
+```
+HTTP/1.1 301 Moved Permanently
+Location: https://projeto-politicas-seguranca.onrender.com/
+Server: cloudflare
+```
+
+**Comando:**
+
+```bash
+curl -sI https://projeto-politicas-seguranca.onrender.com/
+```
+
+**Saída real** (trecho com os cabeçalhos de segurança):
+
+```
+HTTP/1.1 200 OK
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-content-type-options: nosniff
+x-frame-options: DENY
+```
+
+Estes três cabeçalhos são enviados pelo Django, a partir das configurações do
+bloco `if not DEBUG` em `config/settings.py`. Vê-los na resposta prova que o
+sistema publicado roda com a configuração de produção.
+
+**Testes automatizados** (`ComunicacaoSeguraTests`):
+
+| Teste | O que prova |
+|---|---|
+| `test_http_e_redirecionado_para_https_com_301` | A segunda camada: o Django devolve 301 com `Location` em `https://` |
+| `test_https_e_atendido_sem_redirecionamento` | Uma requisição HTTPS é atendida normalmente |
+| `test_resposta_https_envia_hsts` | O cabeçalho HSTS sai com um ano, subdomínios e preload |
+| `test_requisicao_vinda_do_proxy_do_render_nao_entra_em_loop` | Com `X-Forwarded-Proto: https`, o Django não redireciona de novo |
+
+*Captura a incluir: `img/20-http-redireciona.png`, com a barra de endereço após
+digitar `http://`, mostrando o endereço final em `https://`.*
+
+---
+
+## 3.3 — Evidência de tráfego cifrado
+
+### Navegador → servidor
+
+**Comando:**
+
+```bash
+openssl s_client -connect projeto-politicas-seguranca.onrender.com:443 \
+  -servername projeto-politicas-seguranca.onrender.com </dev/null
+```
+
+**Saída real** (trecho):
+
+```
+subject=CN=onrender.com
+issuer=C=US, O=Google Trust Services, CN=WE1
+New, TLSv1.3, Cipher is TLS_AES_256_GCM_SHA384
+Verify return code: 0 (ok)
+```
+
+**O que a saída comprova:** a conexão foi negociada em TLS 1.3, com o conjunto
+`TLS_AES_256_GCM_SHA384` — AES de 256 bits em modo GCM para os dados e SHA-384
+na derivação das chaves. O certificado é válido (`Verify return code: 0`),
+emitido por uma autoridade certificadora reconhecida.
+
+**Versões antigas são recusadas.** Forçando TLS 1.1:
+
+```bash
+openssl s_client -connect projeto-politicas-seguranca.onrender.com:443 \
+  -servername projeto-politicas-seguranca.onrender.com \
+  -tls1_1 -cipher 'DEFAULT@SECLEVEL=0' </dev/null
+```
+
+```
+SSL routines:ssl3_read_bytes:tlsv1 alert protocol version: SSL alert number 70
+New, (NONE), Cipher is (NONE)
+```
+
+O alerta 70 (`protocol version`) é a recusa enviada pelo servidor. O parâmetro
+`-cipher 'DEFAULT@SECLEVEL=0'` é necessário porque o OpenSSL 3 local, por
+padrão, se recusa a tentar TLS 1.1. Sem ele, o erro seria do próprio cliente e
+não provaria nada sobre o servidor.
+
+Forçando TLS 1.2, a conexão é aceita com `ECDHE-ECDSA-AES128-GCM-SHA256`, um
+conjunto com troca de chaves efêmera e cifragem autenticada:
+
+```bash
+openssl s_client -connect projeto-politicas-seguranca.onrender.com:443 \
+  -servername projeto-politicas-seguranca.onrender.com -tls1_2 </dev/null
+```
+
+```
+New, TLSv1.2, Cipher is ECDHE-ECDSA-AES128-GCM-SHA256
+```
+
+### Aplicação → banco de dados
+
+Consulta ao status da própria conexão do Django com o MySQL no Aiven, executada
+a partir do ambiente local:
+
+```bash
+python manage.py shell -c "from django.db import connection; c = connection.cursor(); c.execute(\"SHOW SESSION STATUS WHERE Variable_name IN ('Ssl_version','Ssl_cipher')\"); print(c.fetchall())"
+```
+
+**Saída real:**
+
+```
+(('Ssl_cipher', 'TLS_AES_256_GCM_SHA384'), ('Ssl_version', 'TLSv1.3'))
+```
+
+**O que a saída comprova:** senhas em hash, segredos cifrados e todo o resto
+trafegam entre a aplicação e o banco dentro de TLS 1.3. Um valor vazio nessas
+variáveis indicaria uma conexão sem criptografia.
+
+*Captura a incluir: `img/21-devtools-security.png`, com a aba Security do
+DevTools aberta no site publicado.*
+
+---
+
+## 3.4 e 3.5 — Segredo do 2FA cifrado com AES-256-GCM
+
+O valor gravado na coluna `key` da tabela `otp_totp_totpdevice` passou de
+hexadecimal em texto puro para o formato cifrado:
+
+```
+Antes:  3a9f...  (40 caracteres hexadecimais: o próprio segredo)
+Depois: aes256gcm$<nonce + texto cifrado + etiqueta, em base64>  (74 caracteres)
+```
+
+Com o valor antigo, bastava ler a tabela para cadastrar o 2FA de qualquer conta
+em outro celular. O valor novo não pode ser usado sem a `FIELD_ENCRYPTION_KEY`,
+que não está no banco.
+
+**Pelo front-end:** com uma conta de equipe e o 2FA ativo, o card "Dados
+técnicos" do perfil mostra `Segredo do 2FA no banco: aes256gcm (cifrado)`, ao
+lado do algoritmo do hash da senha. O 2FA continua funcionando normalmente, o
+que prova que o segredo é decifrado corretamente na hora de conferir o código.
+
+**Testes automatizados** (`CriptografiaEmRepousoTests`):
+
+| Teste | O que prova |
+|---|---|
+| `test_segredo_do_2fa_nao_fica_em_texto_puro` | O valor no banco começa com `aes256gcm$` e não contém o segredo |
+| `test_codigo_do_autenticador_continua_valido` | Um código gerado a partir do segredo é aceito |
+| `test_texto_cifrado_cabe_no_campo_do_django_otp` | O valor cifrado cabe nos 80 caracteres do campo |
+| `test_mesmo_segredo_gera_textos_cifrados_diferentes` | O nonce aleatório torna cada cifragem única |
+| `test_valor_alterado_no_banco_e_recusado` | Trocar um único caractere faz o GCM recusar o valor inteiro |
+| `test_segredo_copiado_para_outra_conta_nao_decifra` | O contexto amarra o valor à conta dona |
+| `test_chave_errada_nao_decifra` | Sem a chave certa, nada é decifrado |
+| `test_texto_puro_nao_e_aceito_como_cifrado` | Um segredo em hexadecimal não é aceito no lugar do cifrado |
+| `test_migracao_cifra_segredos_gravados_antes` | A migração cifra segredos antigos sem invalidar o celular já configurado |
+
+*Captura a incluir: `img/22-segredo-2fa-cifrado.png`, com o card "Dados técnicos"
+do perfil, e opcionalmente a coluna `key` consultada no banco.*
+
+---
+
+## 3.6 — Chaves protegidas
+
+- `FIELD_ENCRYPTION_KEY` e `DJANGO_SECRET_KEY` são lidas apenas de variáveis de ambiente.
+- O `.env` está no `.gitignore`. O `.env.example` traz só os nomes das variáveis e o comando para gerar a chave.
+- Sem uma chave de 32 bytes válida, a aplicação não inicia: `ImproperlyConfigured: FIELD_ENCRYPTION_KEY ausente ou invalida`.
+- Com `DEBUG` desligado, a ausência da `DJANGO_SECRET_KEY` também impede a inicialização.
+- Os testes sorteiam uma chave nova a cada execução.
+- O painel administrativo esconde o segredo e o QR Code dos dispositivos 2FA.
+
+---
+
+## Testes automatizados do bloco 3
+
+```
+python manage.py test apps.accounts.tests.CriptografiaEmRepousoTests apps.accounts.tests.ComunicacaoSeguraTests
+```
+
+| Grupo | Quantidade | Requisitos cobertos |
+|---|---|---|
+| `CriptografiaEmRepousoTests` | 9 | 3.4, 3.5, 3.6 |
+| `ComunicacaoSeguraTests` | 4 | 3.1, 3.2 |
+
+---
+
+# Bloco 4 — Conformidade com a LGPD
+
+## 4.1 a 4.3 — Dados coletados, finalidade e minimização
+
+A Política de Privacidade fica em `/privacidade/politica/`, pública e ligada no
+rodapé de todas as páginas. Ela traz a tabela de cada dado com finalidade, base
+legal e prazo de guarda, e começa pelo que o sistema **não** coleta. O
+dicionário técnico completo, com as tabelas do banco, está no
+[checklist.md](checklist.md).
+
+**Evidência de minimização:** o cadastro pede só nome, e-mail e senha. Dois
+testes transformam isso em regra verificável:
+
+- `test_modelo_de_usuario_so_tem_os_campos_necessarios` compara os campos da conta com uma lista fechada. Acrescentar um CPF ou um dado de saúde faz o teste falhar.
+- `test_cadastro_pede_apenas_nome_email_e_senha` faz o mesmo com os campos do formulário.
+
+*Capturas a incluir: `img/23-politica-privacidade.png` (tabela de dados da
+política) e `img/24-cadastro-aceite.png` (cadastro com a caixa de aceite e o link
+para a política).*
+
+---
+
+## 4.4, 4.5 e 4.7 — Consentimento registrado, com finalidade, data e versão
+
+Cada aceite grava uma linha em `ConsentRecord`:
+
+| Campo | Exemplo |
+|---|---|
+| `user` | a conta que aceitou |
+| `purpose` | `CONTA` — Criação e manutenção da conta |
+| `policy_version` | `1.0` |
+| `granted_at` | data e hora do aceite, gravadas automaticamente |
+| `revoked_at` | vazio enquanto o consentimento vale |
+
+**Pelo front-end:** depois de criar a conta, "Privacidade e meus dados" mostra o
+aceite na tabela "Consentimentos", com finalidade, versão, data e situação. Com
+conta de equipe, o painel administrativo lista todos os registros em
+"Registros de consentimento", sem opção de criar, editar ou excluir.
+
+**Versão nova da política:** alterar `PRIVACY_POLICY_VERSION` em
+`config/settings.py` faz toda conta logada ser levada a
+`/privacidade/consentimento/` na próxima página que abrir. O aceite novo é
+gravado ao lado do antigo, que continua no histórico.
+
+**Testes automatizados** (`ConsentimentoTests`):
+
+| Teste | O que prova |
+|---|---|
+| `test_cadastro_grava_o_aceite_com_finalidade_versao_e_data` | 4.4, 4.5 e 4.7 no cadastro |
+| `test_cadastro_sem_aceite_nao_cria_conta_nem_registro` | Sem aceite, nada é gravado |
+| `test_conta_sem_aceite_e_levada_a_tela_de_consentimento` | Contas antigas precisam aceitar |
+| `test_aceite_pela_tela_libera_a_conta` | O aceite pela tela libera o acesso |
+| `test_tela_de_consentimento_recusa_caixa_desmarcada` | Não existe aceite implícito |
+| `test_nova_versao_da_politica_exige_novo_aceite` | 4.7: versão nova, aceite novo, histórico preservado |
+| `test_revogacao_registra_a_data_e_preserva_o_historico` | 4.6: a revogação grava a data e o registro permanece |
+
+*Captura a incluir: `img/25-meus-dados-consentimento.png`, com a tabela de
+consentimentos em "Meus dados".*
+
+---
+
+## 4.8 — Consulta aos dados
+
+Perfil → "Privacidade e meus dados" → `/privacidade/meus-dados/`.
+
+A página mostra, agrupados: dados da conta, descrição de como as credenciais
+são guardadas, consentimentos, acessos realizados, tentativas de acesso
+malsucedidas e eventos de recuperação de senha. Hash da senha e segredo do 2FA
+aparecem descritos, nunca com os valores.
+
+*Captura a incluir: `img/26-meus-dados.png`.*
+
+---
+
+## 4.9 — Exportação em JSON
+
+Botão "Exportar em JSON" na mesma página. O arquivo baixado tem exatamente os
+dados da consulta, porque as duas telas usam a mesma função de coleta.
+
+Estrutura do arquivo:
+
+```json
+{
+  "gerado_em": "...",
+  "conta": { "nome_completo": "...", "email": "...", "cadastrado_em": "...", "ultima_troca_de_senha": "...", "verificacao_em_duas_etapas": "ativa" },
+  "credenciais": { "senha": "Guardada apenas como hash Argon2id...", "segredo_do_2fa": "Guardado cifrado com AES-256-GCM..." },
+  "consentimentos": [ { "finalidade": "Criação e manutenção da conta", "versao_da_politica": "1.0", "aceito_em": "...", "revogado_em": null } ],
+  "registros_de_seguranca": { "acessos_realizados": [...], "tentativas_de_acesso_malsucedidas": [...], "recuperacao_de_senha": [...] }
+}
+```
+
+*Captura a incluir: `img/27-exportacao-json.png`, com o arquivo baixado aberto.*
+
+---
+
+## 4.6 e 4.10 — Revogação e exclusão
+
+"Revogar consentimento e excluir conta" → `/privacidade/excluir-conta/`. A tela
+lista o que será apagado e o que será anonimizado, oferece exportar antes e pede
+a senha atual.
+
+| Dado | O que acontece |
+|---|---|
+| Conta, nome, e-mail, hash da senha | Apagados |
+| Segredo do 2FA e tokens de recuperação | Apagados em cascata com a conta |
+| Acessos e tentativas do django-axes | Apagados |
+| Trilha de recuperação de senha | Anonimizada: fica o evento e a data, sem IP, navegador ou vínculo |
+| Registros de consentimento | Marcados como revogados e desvinculados da conta |
+
+**Demonstração:** depois de confirmar, a sessão é encerrada. Tentar entrar com o
+mesmo e-mail e senha resulta em "E-mail ou senha incorretos", e o e-mail fica
+livre para um novo cadastro.
+
+**Testes automatizados** (`DireitosDoTitularTests`):
+
+| Teste | O que prova |
+|---|---|
+| `test_consulta_mostra_dados_da_conta_e_registros` | 4.8 |
+| `test_consulta_nao_exibe_credenciais` | Hash, segredo cifrado e segredo decifrado não aparecem |
+| `test_exportacao_gera_arquivo_json_para_download` | 4.9: JSON, `attachment`, `no-store`, todas as categorias |
+| `test_exportacao_nao_inclui_credenciais` | O arquivo também não traz credenciais |
+| `test_exportacao_nao_aceita_get` | Download só por POST com CSRF |
+| `test_exclusao_exige_a_senha_correta` | Senha errada não apaga nada |
+| `test_exclusao_apaga_a_conta_e_os_dados_pessoais` | 4.10: conta, 2FA, tokens e django-axes apagados, sessão encerrada |
+| `test_exclusao_anonimiza_a_trilha_de_recuperacao` | O evento fica, sem IP, navegador ou vínculo |
+| `test_tela_de_exclusao_continua_acessivel_sem_consentimento` | Recusar a política não impede sair do sistema |
+
+*Capturas a incluir: `img/28-excluir-conta.png` (tela de confirmação) e
+`img/29-conta-excluida.png` (mensagem após a exclusão).*
+
+---
+
+## 4.11 — Fluxo de atendimento
+
+O passo a passo de cada direito, do clique na interface até o banco de dados,
+está no [checklist.md](checklist.md), na seção "Fluxo de atendimento aos
+direitos do titular".
+
+---
+
+## Testes automatizados do bloco 4
+
+```
+python manage.py test apps.privacy
+```
+
+| Grupo | Quantidade | Requisitos cobertos |
+|---|---|---|
+| `MinimizacaoTests` | 3 | 4.1, 4.2, 4.3 |
+| `ConsentimentoTests` | 7 | 4.4, 4.5, 4.6, 4.7 |
+| `DireitosDoTitularTests` | 9 | 4.8, 4.9, 4.10 |
+
+## Suíte completa
+
+```
+python manage.py test apps.accounts apps.privacy
+```
+
+```
+Ran 73 tests
+
+OK
+```
+
+São 17 testes do bloco 1, 24 do bloco 2, 13 do bloco 3 e 19 do bloco 4.
