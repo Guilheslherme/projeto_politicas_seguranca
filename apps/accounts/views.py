@@ -16,7 +16,12 @@ from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django_otp import login as otp_login
 
-from apps.audit.models import PasswordResetLog
+from apps.audit.models import AuthEvent, PasswordResetLog
+
+# O login e o logout entram na trilha sozinhos, por sinal do Django. O que o
+# django-otp faz não dispara sinal nenhum, então os eventos do segundo fator e
+# do cadastro são gravados aqui, na mão (requisitos 5.1 e 5.2).
+from apps.audit.signals import registrar_evento
 from apps.privacy.models import ConsentRecord
 
 from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
@@ -72,6 +77,11 @@ def register_view(request):
         with transaction.atomic():
             user = form.save()
             ConsentRecord.registrar_aceite(user)
+
+        # Fora da transação, de propósito: o evento diz que a conta foi criada,
+        # então só deve existir depois que a criação foi mesmo confirmada.
+        registrar_evento(request, AuthEvent.Event.CADASTRO, user=user)
+
         messages.success(request, "Conta criada com sucesso. Faça login para continuar.")
         return redirect("accounts:login")
 
@@ -136,8 +146,18 @@ def otp_verify(request):
             _clear_pending(request)
             auth_login(request, user, backend=backend)
             otp_login(request, device)
+
+            # Depois do auth_login, então a trilha mostra a ordem real dos
+            # fatos: a sessão nasce e em seguida o segundo fator é confirmado
+            # nela. O LOGIN_OK logo antes deste registro vem do sinal.
+            registrar_evento(request, AuthEvent.Event.OTP_OK, user=user)
             return redirect("accounts:profile")
 
+        # Requisito 5.2. Aqui não existe sinal do Django para aproveitar: a
+        # senha já tinha sido aceita, e quem recusou o código foi o django-otp.
+        # Sem esta linha, uma sequência de códigos errados não deixaria rastro
+        # nenhum, que é exatamente o padrão que a análise precisa enxergar.
+        registrar_evento(request, AuthEvent.Event.OTP_FALHOU, user=user)
         form.add_error("token", "Código inválido ou expirado.")
 
     return render(
@@ -164,6 +184,7 @@ def otp_setup(request):
             request.user.two_factor_enabled = True
             request.user.save(update_fields=["two_factor_enabled"])
             otp_login(request, device)
+            registrar_evento(request, AuthEvent.Event.OTP_ATIVADO, user=request.user)
             messages.success(request, "Verificação em duas etapas ativada.")
             return redirect("accounts:profile")
         form.add_error("token", "Código inválido. Confira o horário do seu celular.")
@@ -185,6 +206,12 @@ def otp_disable(request):
         EncryptedTOTPDevice.objects.filter(user=request.user).delete()
         request.user.two_factor_enabled = False
         request.user.save(update_fields=["two_factor_enabled"])
+
+        # Desligar o segundo fator enfraquece a conta, então o evento fica
+        # registrado: se a conta for invadida depois, a trilha mostra se a
+        # proteção foi desligada antes e por qual endereço.
+        registrar_evento(request, AuthEvent.Event.OTP_DESATIVADO, user=request.user)
+
         messages.warning(request, "Verificação em duas etapas desativada.")
     return redirect("accounts:profile")
 

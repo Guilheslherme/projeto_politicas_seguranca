@@ -108,7 +108,17 @@ def excluir_conta(user):
       o IP e o navegador são apagados e o vínculo com a conta vira nulo. Sobra a
       contagem do que aconteceu, sem nada que aponte para alguém;
     - registros de consentimento: marcados como revogados e desvinculados da
-      conta. Ficam só finalidade, versão e datas.
+      conta. Ficam só finalidade, versão e datas;
+    - trilha de autenticação (AuthEvent): o vínculo com a conta vira nulo, e
+      nada mais é alterado. IP, navegador e o identificador selado continuam
+      lá porque entram no cálculo do hash de cada registro: apagá-los mudaria
+      o conteúdo de linhas já gravadas e quebraria a cadeia inteira, fazendo o
+      sistema acusar adulteração onde só houve um pedido de exclusão.
+
+      Essa é uma tensão real entre minimizar dados e manter a trilha
+      verificável, e está escrita em docs/analise-de-logs.md junto com a
+      pendência de retenção, que é o que resolveria o caso: apagar os
+      registros antigos por idade, e não por pessoa.
     """
     with transaction.atomic():
         # Revogar antes de excluir: a data de revogação é a prova de que o

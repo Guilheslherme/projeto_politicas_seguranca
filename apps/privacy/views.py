@@ -10,6 +10,9 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from apps.audit.models import AuthEvent
+from apps.audit.signals import registrar_evento
+
 from .forms import ConsentForm, DeleteAccountForm
 from .models import ConsentRecord
 from .rights import excluir_conta, reunir_dados_do_titular
@@ -91,11 +94,22 @@ def delete_account(request):
 
     if request.method == "POST" and form.is_valid():
         user = request.user
-        # A exclusão vem antes do logout. Se ela falhar, a pessoa continua
-        # logada e pode tentar de novo, em vez de ser desconectada achando que
-        # a conta foi apagada.
-        excluir_conta(user)
+
+        # A ordem destas três linhas é deliberada, e mexer nela já quebrou a
+        # trilha uma vez: registrar, encerrar a sessão, e só então apagar.
+        #
+        # O logout dispara o sinal que grava o evento de fim de sessão, e esse
+        # registro guarda o identificador da conta. Se a conta já tivesse sido
+        # apagada, o objeto em memória estaria sem chave primária e o Django
+        # recusaria a gravação; o evento se perderia em silêncio, e a última
+        # coisa que a pessoa fez no sistema ficaria fora da trilha.
+        #
+        # O preço da ordem: se a exclusão falhar, a pessoa sai da sessão com a
+        # conta ainda de pé. Não fica pela metade, porque excluir_conta roda em
+        # uma transação só — basta entrar de novo e repetir.
+        registrar_evento(request, AuthEvent.Event.CONTA_EXCLUIDA, user=user)
         logout(request)
+        excluir_conta(user)
         messages.success(
             request,
             "Sua conta foi excluída e o consentimento, revogado. "
