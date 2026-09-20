@@ -298,6 +298,16 @@ AXES_COOLOFF_TIME = timedelta(minutes=5)
 # propósito, bastando errar a senha dela cinco vezes.
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 
+# O django-axes procura o nome da conta no POST usando a chave definida aqui.
+# Sem esta linha vale o padrão do pacote (django-axes 8.3.1, axes/conf.py,
+# linhas 60-69): o USERNAME_FIELD do modelo, que neste projeto é "email".
+# Só que quem recebe o login é o AuthenticationForm do Django, cujo campo se
+# chama "username" mesmo contendo um e-mail. O axes procurava "email" no
+# formulário, não achava, e gravava a tentativa com username nulo: a
+# combinação acima virava (nulo, ip_address) e o bloqueio era por IP, e não
+# por conta mais IP.
+AXES_USERNAME_FORM_FIELD = "username"
+
 AXES_RESET_ON_SUCCESS = True
 AXES_LOCKOUT_TEMPLATE = "accounts/lockout.html"
 
