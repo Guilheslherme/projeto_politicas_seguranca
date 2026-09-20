@@ -1,6 +1,6 @@
 # Evidências de funcionamento
 
-Comprovação prática dos requisitos dos blocos 1 a 4, demonstrados pelo front-end da aplicação.
+Comprovação prática dos requisitos dos blocos 1 a 5, demonstrados pelo front-end da aplicação.
 
 Aplicação publicada: https://projeto-politicas-seguranca.onrender.com
 
@@ -671,16 +671,210 @@ python manage.py test apps.privacy
 | `ConsentimentoTests` | 7 | 4.4, 4.5, 4.6, 4.7 |
 | `DireitosDoTitularTests` | 9 | 4.8, 4.9, 4.10 |
 
+---
+
+# Bloco 5 — Auditoria e logs
+
+A explicação completa da trilha, com as decisões e os limites, está em
+[analise-de-logs.md](analise-de-logs.md). Aqui ficam as evidências.
+
+## 5.1 — Logs de autenticação registrados
+
+Toda sessão criada e toda sessão encerrada viram uma linha na tabela
+`audit_authevent`, junto com a criação de conta.
+
+A gravação é ligada aos sinais `user_logged_in` e `user_logged_out` do Django,
+em `apps/audit/signals.py`, e não à view de login. A diferença aparece na
+prática: o login pela tela do painel administrativo também entra na trilha. Se a
+gravação estivesse dentro da view do projeto, os acessos da equipe de
+administração ficariam de fora, que é o pior lugar para ter um buraco.
+
+Cada linha guarda o evento, a data, o identificador da conta, o endereço de rede
+e o navegador. O e-mail não é gravado.
+
+**Como conferir pelo front-end:** entrar na conta, sair, e abrir o painel
+administrativo em "Eventos de autenticação". As duas linhas estão no topo.
+
+_(print de "Eventos de autenticação" com LOGIN_OK e LOGOUT)_
+
+## 5.2 — Logs de falhas e 2FA registrados
+
+| Evento | Quando é gravado | Origem |
+|---|---|---|
+| `LOGIN_FALHOU` | senha recusada | sinal `user_login_failed` |
+| `CONTA_BLOQUEADA` | 5 falhas na mesma conta e endereço | sinal `user_locked_out`, do django-axes |
+| `OTP_OK` | código do autenticador aceito | chamada direta em `otp_verify` |
+| `OTP_FALHOU` | código recusado | chamada direta em `otp_verify` |
+| `OTP_ATIVADO` | segundo fator ligado | chamada direta em `otp_setup` |
+| `OTP_DESATIVADO` | segundo fator desligado | chamada direta em `otp_disable` |
+
+Os quatro eventos do segundo fator são gravados na mão porque o django-otp não
+dispara sinal nenhum ao aceitar ou recusar um código.
+
+**O e-mail digitado não é gravado.** Ele serve só para descobrir de qual conta se
+trata: se existe conta com aquele endereço, o registro guarda o número dela; se
+não existe, fica sem vínculo — e essa ausência é informação útil, porque mostra
+tentativa em endereço que não existe no sistema.
+
+O teste `test_senha_errada_em_conta_existente_identifica_a_conta`, em
+`apps/audit/tests.py`, varre todos os campos de texto do registro e falha se o
+endereço aparecer em algum deles.
+
+**Como conferir pelo front-end:** errar a senha cinco vezes na tela de login e
+errar um código na tela do segundo fator, depois filtrar a lista pela coluna
+"evento" no painel administrativo.
+
+_(print da lista filtrada, com LOGIN_FALHOU, CONTA_BLOQUEADA e OTP_FALHOU)_
+
+## 5.3 — Proteção contra alteração dos logs
+
+Três camadas.
+
+**1. O painel é somente leitura.** `AuthEventAdmin` devolve `False` em
+`has_add_permission`, `has_change_permission` e `has_delete_permission`. Vale
+para todo mundo, inclusive para o superusuário: não existe botão de adicionar,
+salvar nem excluir, e o formulário de cada registro abre com todos os campos
+travados.
+
+_(print do registro aberto no painel, sem botões de salvar e excluir)_
+
+**2. Não existe rotina no código que altere registro gravado.** Não é
+esquecimento: se a aplicação soubesse recalcular hashes em lote, essa rotina
+seria a ferramenta pronta para o ataque que este requisito deveria detectar.
+
+**3. Os registros são encadeados por hash.** Cada linha guarda o resumo SHA-256
+da linha anterior, e o resumo da própria linha é calculado incluindo esse valor.
+Mudar qualquer campo de um registro faz o resumo recalculado deixar de bater com
+o gravado; apagar um registro faz o seguinte apontar para um resumo que não
+existe mais.
+
+### Cadeia íntegra
+
+```
+python manage.py verificar_logs
+```
+
+_(colar a saída: `Cadeia integra: N registros verificados.`)_
+
+### Cadeia adulterada
+
+Para comprovar que a conferência realmente pega uma alteração, um registro do
+meio foi alterado direto no banco — que é como um ataque à trilha aconteceria de
+verdade, sem passar pela aplicação:
+
+```sql
+UPDATE audit_authevent SET ip_address = '10.0.0.1' WHERE id = <id do meio>;
+```
+
+_(colar a saída do `verificar_logs` acusando o registro)_
+
+O mesmo comportamento está coberto por teste automatizado, em
+`test_alterar_um_registro_do_meio_e_denunciado`, que altera o campo `detail` de
+um registro do meio e exige que o comando falhe apontando o id certo.
+
+### Âncora do fim da cadeia
+
+A cadeia pega alteração no meio, mas **não pega a remoção dos últimos
+registros**: as linhas que sobram continuam batendo entre si, e a conferência
+diz "cadeia íntegra". A cadeia não guarda em lugar nenhum quantos registros
+deveriam existir.
+
+A tabela abaixo reduz o problema. A cada conferência anotamos quantos registros
+existiam e o hash do último. Este arquivo fica no Git, e o Git guarda a data de
+cada commit. Se a trilha aparecer depois com menos registros do que está escrito
+aqui, alguém apagou do fim.
+
+| Data da conferência | Registros | Último id | Início do último hash |
+|---|---|---|---|
+| _(a preencher)_ | _(a preencher)_ | _(a preencher)_ | _(a preencher)_ |
+
+**Isto não é a solução completa, e não adianta fingir que é.** A âncora só cobre
+até a última vez que alguém lembrou de anotar, e quem tiver acesso de escrita ao
+banco e ao código pode recalcular a cadeia inteira a partir do ponto que
+alterou. O que resolveria de verdade é mandar o log para fora do servidor em
+tempo real, usar armazenamento que só aceita escrita, ou assinar os registros
+com uma chave guardada fora dali — os três estão discutidos em
+[analise-de-logs.md](analise-de-logs.md), seção 5, com o motivo de nenhum deles
+caber neste projeto.
+
+## 5.4 — Exemplo de análise de logs
+
+```
+python manage.py analisar_logs --horas 24
+```
+
+_(colar a saída da execução feita durante os testes pelo navegador)_
+
+A leitura comentada desses números está em
+[analise-de-logs.md](analise-de-logs.md), seção 3.
+
+O comando separa de propósito duas coisas que costumam ser somadas: as contas
+mais visadas e as tentativas em endereços sem conta no sistema. Insistir numa
+conta conhecida é ataque de senha; espalhar tentativas por endereços
+inexistentes é reconhecimento. No mesmo balde, o padrão some.
+
+**Como conferir pelo front-end:** o painel administrativo cobre a mesma leitura
+pela interface. Em "Eventos de autenticação" dá para filtrar por evento e por
+data, e a barra de datas no topo navega por ano, mês e dia.
+
+_(print do painel filtrado por LOGIN_FALHOU)_
+
+## Uma correção que este bloco trouxe
+
+Ao consultar a tabela do django-axes depois de errar a senha de propósito, a
+coluna `username` estava nula. O `config/settings.py` configurava o bloqueio como
+`[["username", "ip_address"]]`, mas na prática a combinação era (nulo,
+endereço): **o bloqueio estava sendo só por IP**, e a documentação afirmava o
+contrário desde o bloco 1.
+
+A causa é que o django-axes 8.3.1 procura o nome da conta no formulário usando,
+por padrão, o campo identificador do modelo de usuário — aqui `email` —, e o
+formulário de login do Django chama esse campo de `username` mesmo contendo um
+e-mail. Uma linha em `config/settings.py` corrige:
+
+```python
+AXES_USERNAME_FORM_FIELD = "username"
+```
+
+**Como conferir pelo front-end:** errar a senha cinco vezes em uma conta até
+aparecer a tela de bloqueio, e em seguida, em uma janela anônima e do mesmo
+computador, entrar normalmente com outra conta. Antes da correção, a segunda
+conta também estaria bloqueada.
+
+_(print da tela de bloqueio e da outra conta entrando do mesmo endereço)_
+
+## Testes automatizados do bloco 5
+
+```
+python manage.py test apps.audit
+```
+
+| Grupo | Quantidade | Requisitos cobertos |
+|---|---|---|
+| `RegistroDeEventosTests` | 3 | 5.1, 5.2 |
+| `CadeiaDeHashesTests` | 4 | 5.3 |
+| `AnaliseDaTrilhaTests` | 1 | 5.4 |
+| `ExclusaoDeContaTests` | 2 | 5.1, 5.3 |
+
+Os dois testes de `ExclusaoDeContaTests` existem por causa de um defeito real: a
+conta era apagada antes do fim da sessão, o evento `LOGOUT` não conseguia ser
+gravado, e a suíte passava mesmo assim — o erro só aparecia para quem fosse ler
+a saída do servidor. O segundo teste falha se qualquer linha de erro aparecer
+durante a exclusão.
+
+---
+
 ## Suíte completa
 
 ```
-python manage.py test apps.accounts apps.privacy
+python manage.py test apps
 ```
 
 ```
-Ran 73 tests
+Ran 83 tests
 
 OK
 ```
 
-São 17 testes do bloco 1, 24 do bloco 2, 13 do bloco 3 e 19 do bloco 4.
+São 17 testes do bloco 1, 24 do bloco 2, 13 do bloco 3, 19 do bloco 4 e 10 do
+bloco 5.

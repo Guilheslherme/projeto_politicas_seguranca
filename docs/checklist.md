@@ -357,21 +357,66 @@ antes de chegar a elas.
 1. "Revogar consentimento e excluir conta" → `/privacidade/excluir-conta/`, que
    lista o que será apagado e o que será anonimizado e oferece exportar antes.
 2. A pessoa confirma com a senha atual. Senha errada não altera nada.
-3. `excluir_conta` executa, em uma única transação:
+3. O evento `CONTA_EXCLUIDA` é gravado na trilha de autenticação, com o número
+   da conta, enquanto ela ainda existe.
+4. A sessão é encerrada, o que grava o evento `LOGOUT` com o mesmo número.
+5. `excluir_conta` executa, em uma única transação:
    1. preenche `revoked_at` nos consentimentos vigentes;
    2. apaga IP e navegador da trilha de recuperação de senha da conta;
    3. apaga os registros do django-axes ligados ao e-mail;
    4. apaga a conta. Em cascata saem o dispositivo 2FA e os tokens de
-      recuperação; a trilha de recuperação e os consentimentos ficam com o
-      vínculo nulo.
-4. Só depois da exclusão confirmada a sessão é encerrada. Se algo falhar, a
-   transação é desfeita e a pessoa continua logada para tentar de novo.
-5. Sessões abertas em outros aparelhos deixam de valer, porque o Django confere
+      recuperação; a trilha de recuperação, a de autenticação e os
+      consentimentos ficam com o vínculo nulo.
+6. Sessões abertas em outros aparelhos deixam de valer, porque o Django confere
    a sessão contra a conta, que não existe mais.
+
+A ordem dos passos 3 a 5 é deliberada: os dois eventos precisam ser gravados
+enquanto a conta existe, senão o Django recusa gravar o vínculo e a última coisa
+que a pessoa fez no sistema fica fora da trilha. O preço é que, se a exclusão
+falhar, a pessoa sai da sessão com a conta ainda de pé — nunca pela metade,
+porque a exclusão é uma transação só, e basta entrar de novo e repetir. A
+explicação completa está em [analise-de-logs.md](analise-de-logs.md), seção 6.
 
 **Referências.**
 
 - BRASIL. *Lei nº 13.709, de 14 de agosto de 2018* (LGPD), arts. 5º, 6º, 7º, 8º, 9º, 11, 15, 16, 18 e 46.
+
+## 5. Auditoria e Logs
+
+| Nº | Requisito | Situação | Implementação | Como demonstrar no front-end |
+|---|---|---|---|---|
+| 5.1 | Logs de autenticação registrados | Atendido | Modelo `AuthEvent` em `apps/audit/models.py`, gravado pelos sinais `user_logged_in` e `user_logged_out` do Django em `apps/audit/signals.py`. Os eventos `LOGIN_OK`, `LOGOUT` e `CADASTRO` guardam data, identificador da conta, endereço de rede e navegador. A ligação é por sinal, e não dentro da view, para que o login pelo painel administrativo também entre na trilha | Entrar e sair da conta, depois abrir o painel administrativo em "Eventos de autenticação": as duas linhas aparecem no topo da lista |
+| 5.2 | Logs de falhas e 2FA registrados | Atendido | Mesmo modelo. `LOGIN_FALHOU` pelo sinal `user_login_failed`, `CONTA_BLOQUEADA` pelo sinal `user_locked_out` do django-axes, e `OTP_OK`, `OTP_FALHOU`, `OTP_ATIVADO` e `OTP_DESATIVADO` por chamada direta em `apps/accounts/views.py`, porque o django-otp não dispara sinal. O e-mail digitado é usado só para achar a conta e não é gravado em campo nenhum | Errar a senha cinco vezes e errar um código do segundo fator, depois filtrar a lista pela coluna "evento" no painel administrativo |
+| 5.3 | Proteção contra alteração dos logs | Atendido | Três camadas: painel somente leitura (`AuthEventAdmin` devolve `False` nas três permissões, inclusive para o superusuário); nenhuma rotina no código que altere registro gravado; e encadeamento por hash SHA-256, em que cada registro guarda o resumo do anterior. O comando `python manage.py verificar_logs` percorre a cadeia e aponta o primeiro registro divergente. Os limites conhecidos estão escritos em [analise-de-logs.md](analise-de-logs.md), seção 5 | Abrir "Eventos de autenticação" no painel: não há botão de adicionar, salvar nem excluir, e o formulário de cada registro é só leitura. A quebra proposital de um registro pelo banco e a saída do comando acusando estão em [evidencias.md](evidencias.md) |
+| 5.4 | Exemplo de análise de logs apresentado | Atendido | Comando `python manage.py analisar_logs --horas N`, em `apps/audit/management/commands/`, com contagem por tipo de evento, endereços e contas com mais falhas, tentativas em endereços sem conta, bloqueios e a proporção entre falha e sucesso. Todas as contagens são agregações do banco (`values`, `annotate`, `Count`). A leitura comentada de uma execução real está em [analise-de-logs.md](analise-de-logs.md), seção 3 | O painel administrativo cobre a mesma leitura pela interface: filtrar por evento e por data em "Eventos de autenticação", e navegar pela barra de datas no topo |
+
+### Decisões técnicas do bloco 5
+
+O documento completo é [analise-de-logs.md](analise-de-logs.md). Em resumo:
+
+- **Duas tabelas, dois papéis.** A do django-axes responde "esta pessoa pode
+  tentar de novo agora?" e precisa esquecer, senão o bloqueio seria permanente.
+  A nossa responde "o que aconteceu nesta conta?" e não pode esquecer, senão
+  deixa de ser trilha.
+- **O que entra no hash é um número selado da conta**, copiado na gravação e
+  nunca mais alterado, e não a chave estrangeira. A chave vira nula quando a
+  conta é excluída; se ela entrasse no cálculo, uma exclusão legítima faria a
+  cadeia inteira acusar adulteração.
+- **A cadeia não é reselada em hipótese nenhuma.** Se a aplicação soubesse
+  recalcular hashes em lote, essa rotina seria a ferramenta pronta para o ataque
+  que o requisito 5.3 deveria detectar.
+- **Limite assumido:** apagar os últimos registros da trilha não é detectado,
+  porque a cadeia não guarda quantos registros deveriam existir. A âncora
+  registrada em [evidencias.md](evidencias.md) reduz o problema, mas não o
+  resolve.
+- **Retenção indefinida** é uma pendência declarada, não um esquecimento:
+  apagar registro antigo quebraria a cadeia do que vem depois.
+
+**Referências.**
+
+- ABNT NBR ISO/IEC 27002:2022, controle 8.15 (Registro de eventos).
+- KENT, K.; SOUPPAYA, M. *Guide to Computer Security Log Management*. NIST Special Publication 800-92. Gaithersburg: NIST, 2006.
+- NIST. *Secure Hash Standard (SHS)*. FIPS PUB 180-4. Gaithersburg: NIST, 2015.
 
 ## Blocos seguintes
 
@@ -380,7 +425,6 @@ de atividades do projeto.
 
 | Bloco | Situação |
 |---|---|
-| 5. Auditoria e logs | Parcial: trilha do bloco 2 gravada em `apps/audit`, somente leitura no painel |
 | 6. Documentação técnico-científica | Em andamento |
 | 7. Resumo científico | Em andamento |
 | 8. Pôster científico e apresentação | Não iniciado |
