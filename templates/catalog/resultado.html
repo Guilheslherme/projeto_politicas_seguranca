@@ -31,11 +31,6 @@
         <li>
           <strong>{{ material.fonte }}</strong> &middot;
           <a href="{{ material.url_original }}" target="_blank" rel="noopener">{{ material.titulo }}</a>
-          {# Muitas páginas de órgãos de saúde não mostram data. Quando não há,
-             nada é escrito — em vez de exibir um campo vazio. #}
-          {% if material.publicado_em %}
-            <span class="apoio small">({{ material.publicado_em|date:"d/m/Y" }})</span>
-          {% endif %}
         </li>
       {% endfor %}
     </ul>

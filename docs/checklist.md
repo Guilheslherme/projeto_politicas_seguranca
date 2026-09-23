@@ -261,11 +261,11 @@ certificadora, que não vai para o repositório.
 | 4.3 | Evidência de minimização de dados | Atendido | O cadastro pede só nome, e-mail e senha. O filtro de sintomas não grava o que a pessoa marca, então pesquisar não deixa rastro na conta. Guardar material indica interesse por tema de saúde e por isso vem desligado, com consentimento próprio por finalidade (Art. 8º, §4º), e o registro guarda só o vínculo com o material e a data. O teste `test_modelo_de_usuario_so_tem_os_campos_necessarios` falha se alguém acrescentar um campo à conta, e `test_cadastro_pede_apenas_nome_email_e_senha` faz o mesmo com o formulário | Abrir `/conta/register/`: apenas três dados e o aceite |
 | 4.4 | Registro explícito de consentimento | Atendido | `ConsentRecord` em `apps/privacy/models.py`. O cadastro grava conta e aceite na mesma transação, com caixa obrigatória e desmarcada por padrão. `ConsentRequiredMiddleware` leva contas sem aceite vigente à tela de consentimento | Criar uma conta e abrir `/privacidade/meus-dados/`: o aceite aparece na tabela "Consentimentos". Com conta de equipe, também em "Registros de consentimento" no painel |
 | 4.5 | Consentimento associado à finalidade | Atendido | Campo `purpose` do registro, com a finalidade "Criação e manutenção da conta". A tabela da política liga cada dado à finalidade e à base legal | A coluna "Finalidade" da tabela de consentimentos em "Meus dados" |
-| 4.6 | Possibilidade de revogação do consentimento | Atendido | `delete_account` em `apps/privacy/views.py`: revoga o consentimento, preenchendo `revoked_at`, e exclui a conta na mesma transação, com confirmação da senha | Em "Meus dados", clicar em "Revogar consentimento e excluir conta" |
+| 4.6 | Possibilidade de revogação do consentimento | Atendido | Em dois níveis. Por finalidade: `revogar` em `apps/catalog/views_conta.py` desliga só a finalidade "guardar materiais" e apaga o que foi guardado, sem tocar no consentimento da conta, usando `ConsentRecord.revogar(user, purpose)`. Por inteiro: `delete_account` em `apps/privacy/views.py` revoga tudo e exclui a conta na mesma transação, com confirmação da senha | Em "Materiais guardados", clicar em "Revogar e apagar a lista"; ou, em "Meus dados", clicar em "Revogar consentimento e excluir conta" |
 | 4.7 | Registro de data e versão do consentimento | Atendido | Campos `granted_at`, gravado automaticamente, e `policy_version`, com o valor de `PRIVACY_POLICY_VERSION`. Mudar a versão faz toda conta aceitar o texto novo, e o aceite antigo continua no histórico | Tabela "Consentimentos" em "Meus dados", com versão e data |
-| 4.8 | Funcionalidade de consulta aos dados do titular | Atendido | `my_data` em `apps/privacy/views.py`, sobre `reunir_dados_do_titular` em `apps/privacy/rights.py`: conta, credenciais, consentimentos e registros de segurança | Perfil → "Privacidade e meus dados" |
+| 4.8 | Funcionalidade de consulta aos dados do titular | Atendido | `my_data` em `apps/privacy/views.py`, sobre `reunir_dados_do_titular` em `apps/privacy/rights.py`: conta, credenciais, materiais guardados, consentimentos e registros de segurança. Os materiais guardados aparecem em categoria própria, e não misturados na conta, porque são a única categoria sensível do sistema | Perfil → "Privacidade e meus dados" |
 | 4.9 | Funcionalidade de exportação dos dados | Atendido | `export_data`: arquivo JSON com exatamente os dados da consulta, sem hash de senha nem segredo do 2FA | Botão "Exportar em JSON" em "Meus dados" |
-| 4.10 | Funcionalidade de exclusão dos dados pessoais | Atendido | `excluir_conta` em `apps/privacy/rights.py`: apaga conta, credenciais, tokens e registros do django-axes, e anonimiza a trilha de recuperação de senha | "Revogar consentimento e excluir conta", confirmar com a senha e tentar entrar de novo com o mesmo e-mail |
+| 4.10 | Funcionalidade de exclusão dos dados pessoais | Atendido | `excluir_conta` em `apps/privacy/rights.py`: apaga conta, credenciais, tokens, materiais guardados e registros do django-axes, e anonimiza a trilha de recuperação de senha | "Revogar consentimento e excluir conta", confirmar com a senha e tentar entrar de novo com o mesmo e-mail |
 | 4.11 | Fluxo de atendimento aos direitos documentado | Atendido | Seção "Fluxo de atendimento aos direitos do titular" abaixo | — |
 
 ### Dicionário de dados
@@ -448,6 +448,41 @@ entregue ao médico antes do exame, ancora o raciocínio dele no que um site
 listou — exatamente o efeito que o projeto evita. No lugar, o resultado termina
 com uma frase indicando procurar um profissional de saúde. É decisão, não
 funcionalidade faltando.
+
+**Guardar material tem consentimento próprio.** É a única função do sistema que
+toca dado sensível: guardar um texto sobre um assunto indica interesse por um
+tema de saúde. Por isso ela vem desligada, e o aceite da Política de
+Privacidade dado no cadastro **não** a autoriza — consentimento genérico é nulo
+para finalidade determinada (Art. 8º, §4º). O `ConsentRecord` ganhou a
+finalidade `MATERIAL_SALVO`, sem modelo novo, e um método `revogar(user,
+purpose)` que desliga uma finalidade sem derrubar as outras. Revogar apaga os
+materiais guardados, porque sem consentimento não há base legal para mantê-los
+(Arts. 15, III, e 16).
+
+**O que a pessoa marca no filtro nunca é gravado.** A linha entre as duas
+coisas é deliberada: o que você leu, com consentimento explícito, pode ficar; o
+que você sente, não fica de jeito nenhum. Um histórico de sintomas seria o dado
+mais danoso que este sistema poderia guardar, e a seleção já viaja na URL, o
+que permite à pessoa favoritar a busca no próprio navegador sem que o servidor
+saiba de nada.
+
+**Testes.** Oito testes em `apps/catalog/tests.py`, executados com
+`python manage.py test apps.catalog`:
+
+| Teste | O que prova |
+|---|---|
+| `test_tela_de_sintomas_responde` | a tela de seleção abre |
+| `test_sinal_de_alerta_interrompe_e_nao_lista_condicao` | **decisão de segurança**: marcado um sinal de alerta, nenhuma condição vaza para a tela, nem o menu |
+| `test_condicao_so_aparece_com_associacao` | sem fonte que afirme a ligação, a condição não existe para a busca |
+| `test_material_desativado_tira_a_condicao` | material retirado do ar derruba a condição que só ele sustentava |
+| `test_lista_sai_em_ordem_alfabetica` | a ordem nunca é por probabilidade |
+| `test_condicao_por_dois_sintomas_aparece_uma_vez` | `distinct()` funcionando |
+| `test_salvar_sem_consentimento_e_recusado` | **decisão de privacidade**: o aceite do cadastro não autoriza guardar material |
+| `test_revogar_apaga_os_salvamentos_e_poupa_a_conta` | revogar uma finalidade elimina os dados dela e não derruba a conta |
+
+Os dois marcados em negrito são os que sustentam as decisões centrais do
+projeto: um prova que o sinal de alerta interrompe, o outro que o consentimento
+é por finalidade.
 
 **Pendência declarada:** avisar quem salvou um material quando a fonte o retira
 ou revisa. Depende de tarefa agendada e envio de e-mail, que não cabem nesta

@@ -864,6 +864,94 @@ durante a exclusão.
 
 ---
 
+---
+
+# Acervo de sintomas e consentimento por finalidade
+
+Não é um bloco do check-list — é a funcionalidade do portal. Está aqui porque
+duas decisões dela aparecem na avaliação de LGPD, e porque é o que dá o que
+demonstrar no front-end.
+
+## O filtro não grava nada
+
+Em `/sintomas/` a pessoa marca o que está sentindo e o formulário é enviado por
+**GET**: os sintomas viram parâmetros na URL, como em
+`/sintomas/resultado/?s=febre&s=tosse`.
+
+Isso tem três consequências práticas, e nenhuma delas é acidente:
+
+1. **Nada é gravado.** Não existe tabela de sintomas por pessoa, e a view não
+   escreve no banco em momento nenhum.
+2. **A URL é compartilhável e favoritável.** Quem quiser guardar a busca usa o
+   próprio navegador; o servidor continua sem saber de nada.
+3. **Não há CSRF a proteger**, porque a requisição não altera estado.
+
+**Como conferir pelo front-end:** marcar sintomas, buscar, e olhar a barra de
+endereço. Depois, consultar `catalog_materialsalvo` e ver que continua vazia.
+
+## O sinal de alerta interrompe
+
+Quatro sintomas são sinais de alerta: dor no peito, falta de ar, fraqueza
+súbita em um lado do corpo, e dor de cabeça que começou de repente e muito
+forte.
+
+Marcando qualquer um deles, a view **retorna antes** de consultar associação
+nenhuma: não monta lista, não mostra condição, e a tela de alerta nem menu tem.
+Misturar "pode ser urgente" com uma lista de leitura convidaria a pessoa a ler
+em vez de procurar socorro.
+
+**Como conferir pelo front-end:** marcar "Dor no peito" **junto com** "Febre",
+que tem condições cadastradas. Mesmo assim nenhuma condição aparece.
+
+_(print da tela de alerta com o 192)_
+
+## Quem associa o sintoma à condição é a fonte
+
+Toda associação carrega obrigatoriamente o material que a afirma. Sem material,
+a associação não existe no banco — é `ForeignKey` sem `null` e sem `blank`.
+
+O acervo inicial tem 4 condições e 5 materiais, todos de Ministério da Saúde e
+OPAS/OMS, carregados pela migração `0005_acervo_inicial`. O cabeçalho dela
+registra **duas associações que foram recusadas** por não estarem na fonte:
+"dor abdominal → dengue" (a página cita dor na barriga como sinal de alarme da
+forma grave, não como sintoma comum) e "cansaço → geo-helmintíase" (a página
+diz "fraqueza", que não é a mesma palavra).
+
+**Como conferir pelo front-end:** marcar "Febre" e ver que cada condição lista
+quem afirma a ligação, com o link do material. A dengue aparece com duas
+fontes.
+
+## Guardar material: consentimento próprio (Art. 8º, §4º)
+
+Guardar um material indica interesse por um tema de saúde, que é dado sensível.
+O aceite da Política de Privacidade dado no cadastro **não** autoriza isso.
+
+| Passo | O que acontece |
+|---|---|
+| Clicar em "Guardar na minha conta" sem ter consentido | **nada é gravado**; a pessoa vai para a tela que explica |
+| Consentir | grava a finalidade `MATERIAL_SALVO` no `ConsentRecord` e guarda o material |
+| Abrir "Meus dados" | o material aparece em categoria própria, separada da conta |
+| Revogar | apaga a lista inteira **e** mantém o consentimento da conta de pé |
+
+**Como conferir pelo front-end:** abrir uma condição logado, clicar em guardar,
+ler a tela de consentimento, aceitar, conferir em "Materiais guardados", e
+revogar. Depois entrar em "Meus dados" e ver que a conta continua funcionando.
+
+_(prints da tela de consentimento e da lista de materiais guardados)_
+
+## Testes automatizados do acervo
+
+```
+python manage.py test apps.catalog
+```
+
+| Grupo | Quantidade | O que cobre |
+|---|---|---|
+| `AcervoTests` | 6 | filtro, desvio de alerta, associação obrigatória, material desativado, ordem alfabética, `distinct()` |
+| `ConsentimentoPorFinalidadeTests` | 2 | recusa sem consentimento, e revogação por finalidade |
+
+---
+
 ## Suíte completa
 
 ```
@@ -871,10 +959,10 @@ python manage.py test apps
 ```
 
 ```
-Ran 83 tests
+Ran 91 tests
 
 OK
 ```
 
-São 17 testes do bloco 1, 24 do bloco 2, 13 do bloco 3, 19 do bloco 4 e 10 do
-bloco 5.
+São 17 testes do bloco 1, 24 do bloco 2, 13 do bloco 3, 19 do bloco 4, 10 do
+bloco 5 e 8 do acervo.
