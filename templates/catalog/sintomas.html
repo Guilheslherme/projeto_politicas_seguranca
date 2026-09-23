@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Sintomas | Health In Sight{% endblock %}
+
+{% block content %}
+{% comment %}
+  O formulário é GET, e não POST: os sintomas viram parâmetros na URL. Assim o
+  endereço do resultado pode ser compartilhado, o botão de voltar do navegador
+  funciona, e não há nada a proteger com CSRF, porque a requisição não altera
+  nada no servidor.
+
+  Os dois grupos usam o mesmo nome de campo, "s". O navegador manda um "s" para
+  cada caixa marcada, e a view lê a lista inteira.
+{% endcomment %}
+<form method="get" action="{% url 'catalog:resultado' %}">
+
+  <fieldset class="grupo cartao">
+    <legend><h1>O que você está sentindo?</h1></legend>
+    <div class="opcoes">
+      {% for sintoma in comuns %}
+        <label class="opcao">
+          <input type="checkbox" name="s" value="{{ sintoma.slug }}"{% if sintoma.slug in marcados %} checked{% endif %}>
+          {{ sintoma.nome }}
+        </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+
+  <fieldset class="grupo grupo-alerta">
+    <legend><h2>Algum destes?</h2></legend>
+    <p class="small">
+      Estes sinais mudam a resposta: marcando qualquer um deles, o portal não
+      mostra lista nenhuma e manda procurar atendimento.
+    </p>
+    <div class="opcoes">
+      {% for sintoma in alertas %}
+        <label class="opcao">
+          <input type="checkbox" name="s" value="{{ sintoma.slug }}"{% if sintoma.slug in marcados %} checked{% endif %}>
+          {{ sintoma.nome }}
+        </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+
+  <button class="botao block" type="submit">Ver o que as fontes dizem</button>
+  <p class="apoio small">
+    Marcar sintomas não cria registro nenhum. Nada do que você escolher aqui
+    fica guardado.
+  </p>
+</form>
+{% endblock %}

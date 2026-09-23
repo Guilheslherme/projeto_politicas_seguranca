@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Materiais guardados | Health In Sight{% endblock %}
+
+{% block content %}
+<h1>Materiais guardados</h1>
+
+{% if not consentiu %}
+  <div class="cartao">
+    <p>
+      Guardar materiais na conta está desligado. É uma função separada, com
+      consentimento próprio, porque guardar um material indica interesse por um
+      tema de saúde.
+    </p>
+    <a class="botao" href="{% url 'catalog:consentimento_materiais' %}">
+      Ler e decidir
+    </a>
+  </div>
+{% else %}
+  {% for salvo in salvos %}
+    <div class="cartao">
+      <p class="apoio small">
+        {{ salvo.material.fonte }} &middot; guardado em {{ salvo.salvo_em|date:"d/m/Y" }}
+      </p>
+      <h2>{{ salvo.material.titulo }}</h2>
+      <p>{{ salvo.material.resumo }}</p>
+
+      <a class="botao" href="{{ salvo.material.url_original }}" target="_blank" rel="noopener">
+        Abrir no site da fonte
+      </a>
+
+      <form method="post" action="{% url 'catalog:remover_material' salvo.material_id %}">
+        {% csrf_token %}
+        <button class="link" type="submit">Remover da lista</button>
+      </form>
+    </div>
+  {% empty %}
+    <div class="cartao">
+      <p>Você ainda não guardou nenhum material.</p>
+      <p class="apoio small">
+        O botão de guardar aparece em cada material, na página da condição.
+      </p>
+    </div>
+  {% endfor %}
+
+  {% comment %}
+    A revogação fica na mesma tela da lista, e não escondida em outro lugar:
+    quem pode ver o que foi guardado precisa poder desfazer no mesmo passo.
+  {% endcomment %}
+  <div class="fechamento">
+    <h2>Revogar o consentimento</h2>
+    <p>
+      Revogar desliga a função e <strong>apaga todos os materiais guardados</strong>.
+      Sem consentimento não existe base legal para manter esses dados, então
+      eles são eliminados junto (Arts. 15, III, e 16 da LGPD).
+    </p>
+    <p class="apoio small">
+      Sua conta continua existindo. Isto revoga só a finalidade de guardar
+      materiais.
+    </p>
+    <form method="post" action="{% url 'catalog:revogar_materiais' %}">
+      {% csrf_token %}
+      <button class="btn-danger" type="submit">Revogar e apagar a lista</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

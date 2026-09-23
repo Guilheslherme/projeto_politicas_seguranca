@@ -4,22 +4,58 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Health In Sight{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand" href="{% url 'home' %}">Health In Sight</a>
-    <nav>
+  <header class="cabecalho">
+    <a class="marca" href="{% url 'home' %}">
+      <!-- A folha vai embutida aqui, e não como <img>, porque o desenho usa
+           currentColor: assim ela acompanha a cor definida no CSS. -->
+      <svg class="folha" viewBox="0 0 100 100" aria-hidden="true">
+        <mask id="folha-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+          <rect width="100" height="100" fill="black"/>
+          <path d="M78 20C78 20 34 18 24 47c-7 20 6 34 6 34s30-3 42-20c9-13 6-41 6-41Z" fill="white"/>
+          <path d="M30 81C40 60 56 42 74 28" fill="none" stroke="black" stroke-width="5" stroke-linecap="round"/>
+        </mask>
+        <rect width="100" height="100" fill="currentColor" mask="url(#folha-mask)"/>
+      </svg>
+      Health In Sight
+    </a>
+
+    {% comment %}
+      A navegação fica dentro de um bloco para que uma tela possa apagá-la. A
+      de alerta faz isso: quem chega lá tem uma coisa só a fazer, e link para
+      outra parte do site é convite para adiar.
+    {% endcomment %}
+    {% block menu %}
+    <button class="botao-menu" type="button" aria-expanded="false" aria-controls="menu">Menu</button>
+
+    <nav class="menu" id="menu">
+      {% comment %}
+        As seções que estes links procuram existem só na home. Por isso cada
+        endereço começa pela home e só depois traz a âncora: escrito só como
+        "#como", o link não faria nada em qualquer outra tela, porque não
+        haveria seção com esse nome na página aberta.
+      {% endcomment %}
+      <a href="{% url 'catalog:sintomas' %}">Condições</a>
+      <a href="{% url 'home' %}#como">Como funciona</a>
+      <a href="{% url 'home' %}#fontes">Fontes</a>
+      <a href="{% url 'home' %}#privacidade">Privacidade</a>
+
       {% if user.is_authenticated %}
         <a href="{% url 'accounts:profile' %}">Minha conta</a>
-        <form action="{% url 'accounts:logout' %}" method="post" class="inline-form">
+        <form action="{% url 'accounts:logout' %}" method="post">
           {% csrf_token %}
-          <button type="submit" class="link-button">Sair</button>
+          <button class="botao" type="submit">Sair</button>
         </form>
       {% else %}
         <a href="{% url 'accounts:login' %}">Entrar</a>
+        <a class="botao" href="{% url 'accounts:register' %}">Criar conta</a>
       {% endif %}
     </nav>
+    {% endblock %}
   </header>
 
   <main class="container">
@@ -33,10 +69,33 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="site-footer">
-    <p>Health In Sight &mdash; informação confiável sobre saúde.</p>
-    <p class="small">Este conteúdo não substitui a avaliação de um profissional de saúde.</p>
-    <p class="small"><a href="{% url 'privacy:policy' %}">Política de Privacidade</a></p>
+  <footer class="rodape">
+    <p>
+      Health In Sight &middot; Trabalho da disciplina de Políticas de Informação
+      &mdash; Universidade de Mogi das Cruzes &middot;
+      <a href="{% url 'privacy:policy' %}">Privacidade</a> &middot;
+      <!-- "Termos" ainda não tem página. Fica como texto até existir: link que
+           não leva a lugar nenhum é pior do que não ter link. -->
+      Termos
+    </p>
   </footer>
+
+  <script>
+    // Menu do celular: o botão mostra e esconde a lista de links.
+    const botaoMenu = document.querySelector('.botao-menu');
+    const menu = document.querySelector('.menu');
+    // A tela de alerta não desenha menu nenhum, então aqui não há o que ligar.
+    if (botaoMenu) botaoMenu.addEventListener('click', function () {
+      const aberto = menu.classList.toggle('aberto');
+      // Conta ao leitor de tela se a lista está aberta ou fechada.
+      botaoMenu.setAttribute('aria-expanded', aberto);
+    });
+  </script>
+
+  {% comment %}
+    Cada tela que precisa de script próprio o coloca aqui, no fim do corpo,
+    quando o HTML dela já existe.
+  {% endcomment %}
+  {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}O que as fontes dizem | Health In Sight{% endblock %}
+
+{% block content %}
+<h1>O que as fontes dizem</h1>
+
+{% comment %}
+  O aviso vem antes de qualquer condição, e o texto é fixo. Ele é a moldura
+  para tudo que aparece embaixo: sem ele, uma lista de condições parece um
+  palpite sobre o que a pessoa tem.
+{% endcomment %}
+<p class="aviso-incompletude">
+  Esta lista mostra condições que fontes oficiais associam aos sintomas que
+  você marcou. Ela não está ordenada por probabilidade, pode estar incompleta e
+  não diz o que você tem. Só um profissional de saúde pode avaliar o seu caso.
+</p>
+
+<p class="apoio small">
+  Sintomas marcados:
+  {% for sintoma in marcados %}{{ sintoma.nome }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+</p>
+
+{% for condicao in condicoes %}
+  <article class="cartao">
+    <h2><a href="{% url 'catalog:condicao' condicao.slug %}">{{ condicao.nome }}</a></h2>
+    <p>{{ condicao.resumo }}</p>
+
+    <h3 class="small">Quem afirma essa associação</h3>
+    <ul class="fontes-lista">
+      {% for material in condicao.materiais %}
+        <li>
+          <strong>{{ material.fonte }}</strong> &middot;
+          <a href="{{ material.url_original }}" target="_blank" rel="noopener">{{ material.titulo }}</a>
+          {# Muitas páginas de órgãos de saúde não mostram data. Quando não há,
+             nada é escrito — em vez de exibir um campo vazio. #}
+          {% if material.publicado_em %}
+            <span class="apoio small">({{ material.publicado_em|date:"d/m/Y" }})</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+
+    <div class="faixa-alerta">
+      <h3>Quando procurar atendimento</h3>
+      <p>{{ condicao.quando_procurar }}</p>
+    </div>
+  </article>
+{% empty %}
+  {% comment %}
+    Esta frase importa tanto quanto a lista. Ela separa "o nosso acervo não tem"
+    de "não existe" — e a segunda leitura faria a pessoa achar que está tudo bem
+    quando a gente só não cadastrou nada ainda.
+  {% endcomment %}
+  <div class="cartao">
+    <p>
+      Nenhuma fonte cadastrada associa esses sintomas a alguma condição no nosso
+      acervo. Isso não significa que não exista — significa que a gente ainda
+      não cadastrou.
+    </p>
+  </div>
+{% endfor %}
+
+{% comment %}
+  O portal termina aqui, e termina apontando para fora. Não existe folha para
+  imprimir nem preparo para a consulta: qualquer papel que a gente entregasse
+  com nome de condição em cima acabaria ancorando o que o profissional pensa
+  antes de ele examinar a pessoa, e é isso que o projeto inteiro evita.
+
+  A mensagem aparece nos dois casos, com lista e sem lista, porque a conduta é
+  a mesma: procurar quem pode avaliar.
+{% endcomment %}
+<div class="fechamento">
+  <p>
+    O que está aqui é o que as fontes publicaram, e nada disso é um diagnóstico.
+    Quem pode avaliar o seu caso é um profissional de saúde — marque uma
+    consulta.
+  </p>
+  <p class="small">
+    Em caso de urgência, vá a um serviço de emergência ou ligue 192.
+  </p>
+</div>
+
+<p class="small">
+  {# Leva os mesmos parâmetros de volta, para a tela reabrir com o que foi marcado. #}
+  <a href="{% url 'catalog:sintomas' %}?{{ request.GET.urlencode }}">Voltar e rever o que marquei</a>
+</p>
+{% endblock %}

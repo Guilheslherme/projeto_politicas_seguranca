@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ condicao.nome }} | Health In Sight{% endblock %}
+
+{% block content %}
+<div class="condicao">
+  <article>
+    <h1>{{ condicao.nome }}</h1>
+    <p>{{ condicao.resumo }}</p>
+
+    <div class="faixa-alerta">
+      <h2>Quando procurar atendimento</h2>
+      <p>{{ condicao.quando_procurar }}</p>
+    </div>
+
+    <h2>O que as fontes publicaram</h2>
+    {% comment %}
+      Aqui só entram título, resumo e link. O texto completo fica no site de
+      quem publicou: assim a fonte continua dona do conteúdo, e uma correção
+      feita por ela vale na hora, sem depender de a gente copiar de novo.
+    {% endcomment %}
+    {% for material in materiais %}
+      <div class="cartao">
+        <p class="apoio small">
+          {{ material.fonte }}{% if material.publicado_em %} &middot; {{ material.publicado_em|date:"d/m/Y" }}{% endif %}
+        </p>
+        <h3>{{ material.titulo }}</h3>
+        <p>{{ material.resumo }}</p>
+        <a class="botao" href="{{ material.url_original }}" target="_blank" rel="noopener">
+          Abrir no site da fonte
+        </a>
+
+        {% comment %}
+          Guardar só aparece para quem está logado, e é POST porque grava. Quem
+          ainda não consentiu para esta finalidade cai na tela que explica o
+          que está sendo pedido, antes de qualquer coisa ser gravada.
+        {% endcomment %}
+        {% if user.is_authenticated %}
+          <form method="post" action="{% url 'catalog:salvar_material' material.id %}">
+            {% csrf_token %}
+            <button class="link" type="submit">Guardar na minha conta</button>
+          </form>
+        {% endif %}
+      </div>
+    {% empty %}
+      <div class="cartao">
+        <p>
+          Nenhum material desta condição está no ar agora. Pode ser que a fonte
+          tenha retirado ou revisado o texto, ou que a gente ainda não tenha
+          cadastrado nenhum.
+        </p>
+      </div>
+    {% endfor %}
+
+    <div class="fechamento">
+      <p>
+        Nada nesta página é um diagnóstico. Quem pode avaliar o seu caso é um
+        profissional de saúde — marque uma consulta.
+      </p>
+    </div>
+  </article>
+
+  <aside class="faixa-escura">
+    <div>
+      <h2>Não dá para esperar?</h2>
+      <p class="small">
+        Dor no peito, falta de ar, confusão mental, fraqueza súbita em um lado
+        do corpo ou sangramento que não para: vá a um serviço de urgência.
+      </p>
+      <p class="numero-192-claro">192</p>
+    </div>
+  </aside>
+</div>
+{% endblock %}

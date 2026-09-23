@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from apps.accounts.models import EncryptedTOTPDevice
 from apps.audit.models import PasswordResetLog
+from apps.catalog.models import MaterialSalvo
 
 from .models import ConsentRecord
 
@@ -52,6 +53,18 @@ def reunir_dados_do_titular(user):
                 else "Não existe: a verificação em duas etapas está inativa."
             ),
         },
+        # A única categoria de dado sensível do sistema: guardar um material
+        # indica interesse por um tema de saúde. Entra aqui separada das
+        # outras, e não misturada na conta, para a pessoa enxergar de imediato
+        # o que existe sobre ela nessa categoria.
+        "materiais_guardados": [
+            {
+                "material": salvo.material.titulo,
+                "fonte": salvo.material.fonte,
+                "guardado_em": salvo.salvo_em,
+            }
+            for salvo in MaterialSalvo.objects.filter(user=user).select_related("material")
+        ],
         "consentimentos": [
             {
                 "finalidade": registro.get_purpose_display(),
@@ -107,6 +120,8 @@ def excluir_conta(user):
     - trilha de recuperação de senha: anonimizada. O evento e a data ficam, mas
       o IP e o navegador são apagados e o vínculo com a conta vira nulo. Sobra a
       contagem do que aconteceu, sem nada que aponte para alguém;
+    - materiais guardados na conta: apagados em cascata junto com ela. São
+      preferência da pessoa, e preferência sem dono não serve para nada;
     - registros de consentimento: marcados como revogados e desvinculados da
       conta. Ficam só finalidade, versão e datas;
     - trilha de autenticação (AuthEvent): o vínculo com a conta vira nulo, e

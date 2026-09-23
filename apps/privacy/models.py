@@ -27,6 +27,12 @@ class ConsentRecord(models.Model):
 
         CONTA = "CONTA", "Criação e manutenção da conta"
 
+        """ Guardar material na conta indica interesse por um tema de saúde, que
+        é dado sensível (Art. 5º, II). Tem finalidade própria porque
+        consentimento genérico não vale para finalidade determinada (Art. 8º,
+        §4º): aceitar a política no cadastro não autoriza isto. """
+        MATERIAL_SALVO = "MATERIAL_SALVO", "Guardar materiais na conta"
+
     """ Conta que deu o consentimento. Se a conta for excluída, o vínculo fica
     nulo e o registro permanece apenas com finalidade, versão e datas — nenhum
     dado que identifique a pessoa —, preservando o histórico de que houve
@@ -99,3 +105,20 @@ class ConsentRecord(models.Model):
         return cls.objects.filter(user=user, revoked_at__isnull=True).update(
             revoked_at=timezone.now()
         )
+
+    @classmethod
+    def revogar(cls, user, purpose):
+        """Revoga o consentimento de uma finalidade só, deixando as outras.
+
+        Existe separado de revogar_todos por um motivo prático: quem desiste de
+        guardar materiais não está desistindo da conta. Sem este método, revogar
+        aquela finalidade derrubaria junto o consentimento que sustenta a conta
+        inteira.
+
+        A linha antiga continua no banco, com a data de revogação preenchida.
+        Nada é apagado: o histórico precisa mostrar que houve aceite antes de
+        haver revogação.
+        """
+        return cls.objects.filter(
+            user=user, purpose=purpose, revoked_at__isnull=True
+        ).update(revoked_at=timezone.now())

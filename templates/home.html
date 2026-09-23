@@ -1,7 +1,124 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="hero">
-  <h1>Informação confiável sobre saúde, em um só lugar!</h1>
-  <p>Conteúdos de prevenção e tratamento, sempre com a fonte oficial identificada.</p>
+
+<!-- 1. Abertura. O cartão da direita é a porta de entrada do filtro: os
+     marcadores são exemplos do que dá para marcar lá, e o botão leva para a
+     tela de seleção. Não há formulário aqui de propósito — dois lugares
+     marcando sintoma seriam duas listas para manter em pé. -->
+<section class="abertura" id="condicoes">
+  <div>
+    <p class="etiqueta">Informação verificada sobre saúde</p>
+    <h1>A gente não tenta adivinhar o que você tem.</h1>
+    <p class="linha-grande">
+      Você diz o que está sentindo. O portal mostra o que fontes confiáveis
+      publicaram sobre aquilo, indica quando o caso pede atendimento e sempre
+      aponta para o profissional de saúde.
+    </p>
+    <p class="apoio">Nada aqui é diagnóstico, receita ou substituto de consulta.</p>
+  </div>
+
+  <div class="cartao">
+    <h2>O que você está sentindo?</h2>
+
+    <p class="apoio">
+      Você marca o que está sentindo numa lista, e o portal mostra o que as
+      fontes publicaram sobre aquilo.
+    </p>
+
+    <!-- Atalhos para os seis sintomas comuns: cada um abre a tela de seleção
+         com aquele sintoma já marcado, para a pessoa acrescentar os outros.
+         Os nomes e os apelidos estão escritos aqui, e a lista que vale é a do
+         banco: se um sintoma entrar ou sair de lá, atualizar aqui também. -->
+    <p class="marcadores">
+      <a class="marcador" href="{% url 'catalog:sintomas' %}?s=febre">Febre</a>
+      <a class="marcador" href="{% url 'catalog:sintomas' %}?s=dor-de-cabeca">Dor de cabeça</a>
+      <a class="marcador" href="{% url 'catalog:sintomas' %}?s=tosse">Tosse</a>
+      <a class="marcador" href="{% url 'catalog:sintomas' %}?s=dor-de-garganta">Dor de garganta</a>
+      <a class="marcador" href="{% url 'catalog:sintomas' %}?s=cansaco">Cansaço</a>
+      <a class="marcador" href="{% url 'catalog:sintomas' %}?s=dor-abdominal">Dor abdominal</a>
+    </p>
+
+    <a class="botao block" href="{% url 'catalog:sintomas' %}">Ver o que as fontes dizem</a>
+    <p class="apoio small">Marcar sintomas não cria registro nenhum.</p>
+  </div>
 </section>
+
+<!-- 2. Faixa de alerta. Vem logo depois da abertura de propósito: quem chega
+     com urgência não deve precisar rolar a página para encontrar isto. -->
+<section class="faixa-alerta">
+  <h2>Alguns sinais não esperam</h2>
+  <p>
+    Dor no peito, falta de ar, confusão mental, fraqueza súbita em um lado do
+    corpo, sangramento que não para. Nesses casos, procure atendimento agora ou
+    ligue <strong>192</strong>.
+  </p>
+</section>
+
+<!-- 3. Como funciona -->
+<section id="como">
+  <h2>Como funciona</h2>
+  <div class="tres">
+    <div class="cartao">
+      <p class="numero">1</p>
+      <h3>Você descreve</h3>
+      <p>Escolhe o sintoma, a região do corpo e há quanto tempo aquilo aparece.</p>
+    </div>
+    <div class="cartao">
+      <p class="numero">2</p>
+      <h3>O filtro reduz</h3>
+      <p>
+        Aparecem os conteúdos publicados por órgãos de saúde que tratam daquele
+        assunto. Nenhum resultado afirma que você tem algo.
+      </p>
+    </div>
+    <div class="cartao">
+      <p class="numero">3</p>
+      <h3>Você lê a fonte</h3>
+      <p>Cada texto mostra quem publicou, quando, e o link para o material original.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4. De onde vem cada texto -->
+<section id="fontes">
+  <h2>De onde vem cada texto</h2>
+  <div class="duas">
+    <p>
+      O portal não escreve conteúdo de saúde. Ele reúne o que já foi publicado
+      por órgãos e instituições reconhecidas, sempre com data e link. Se um
+      material perde a validade ou é revisado na origem, ele sai daqui.
+    </p>
+    <div class="caixas">
+      <span class="caixa">Ministério da Saúde</span>
+      <span class="caixa">Organização Mundial da Saúde</span>
+      <span class="caixa">Fiocruz</span>
+      <span class="caixa">Sociedades médicas brasileiras</span>
+    </div>
+  </div>
+</section>
+
+<!-- 5. Faixa escura de privacidade -->
+<section class="faixa-escura" id="privacidade">
+  <div>
+    <h2>O que você sente não vira cadastro</h2>
+    <p>
+      Dado de saúde é dado sensível pela LGPD. Em vez de proteger esse dado com
+      controles, o projeto decidiu não coletá-lo: marcar sintomas não deixa
+      rastro nenhum na sua conta, e a senha é guardada só como hash, que não dá
+      para reverter.
+    </p>
+    <p class="small">
+      Existe uma exceção, e ela é sua escolha: guardar um material para ler
+      depois. Isso já diz algo sobre o seu interesse, então vem desligado e pede
+      um consentimento à parte — que você revoga quando quiser, apagando tudo.
+    </p>
+  </div>
+  <ul class="direitos">
+    <li>Consulta aos próprios dados</li>
+    <li>Exportação em arquivo</li>
+    <li>Exclusão da conta</li>
+  </ul>
+  <a class="link-claro" href="{% url 'privacy:policy' %}">Ler a política de privacidade</a>
+</section>
+
 {% endblock %}

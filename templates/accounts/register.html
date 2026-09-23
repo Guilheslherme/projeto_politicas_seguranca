@@ -1,31 +1,125 @@
 {% extends "base.html" %}
+{# Nao se herda do base.html: todo template que monta caminho de arquivo estatico precisa do seu. #}
+{% load static %}
 {% block title %}Criar conta | Health In Sight{% endblock %}
 
 {% block content %}
-<div class="card card-narrow">
+<div class="cartao cartao-estreito">
   <h1>Criar conta</h1>
+  <p class="apoio">
+    Ler o portal não exige conta. Ela serve para quem quiser usar a área logada.
+  </p>
 
   <form method="post" novalidate>
     {% csrf_token %}
-    {% for field in form %}
-      <div class="field">
-        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {{ field }}
-        {% if field.help_text %}<p class="help">{{ field.help_text|safe }}</p>{% endif %}
-        {{ field.errors }}
-      </div>
-    {% endfor %}
-    <button type="submit" class="btn-primary block">Criar conta</button>
+
+    {% comment %}
+      Os campos são escritos um a um, e não em laço, por dois motivos: a caixa
+      de aceite precisa vir ao lado do texto, e não embaixo dele, e a lista de
+      regras da senha precisa aparecer antes de a pessoa digitar, não depois.
+    {% endcomment %}
+    <div class="campo">
+      <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+      {{ form.email }}
+      {{ form.email.errors }}
+    </div>
+
+    <div class="campo">
+      <label for="{{ form.full_name.id_for_label }}">{{ form.full_name.label }}</label>
+      {{ form.full_name }}
+      {{ form.full_name.errors }}
+    </div>
+
+    <div class="campo">
+      <label for="{{ form.password1.id_for_label }}">{{ form.password1.label }}</label>
+      <div class="regras">{{ form.password1.help_text|safe }}</div>
+      {{ form.password1 }}
+      {{ form.password1.errors }}
+    </div>
+
+    <div class="campo">
+      <label for="{{ form.password2.id_for_label }}">{{ form.password2.label }}</label>
+      {{ form.password2 }}
+      {{ form.password2.errors }}
+    </div>
+
+    <div class="aceite">
+      {{ form.accept_privacy_policy }}
+      <label for="{{ form.accept_privacy_policy.id_for_label }}">
+        {{ form.accept_privacy_policy.label }}
+      </label>
+    </div>
+    {{ form.accept_privacy_policy.errors }}
+
+    <p class="apoio small">
+      {{ form.accept_privacy_policy.help_text|safe }} &middot;
+      <button class="link" type="button" id="abrir-modal">
+        Como cuidamos dos seus dados de saúde
+      </button>
+    </p>
+
+    <button type="submit" class="botao block">Criar conta</button>
   </form>
 
-  <p class="muted small">
-    Coletamos apenas Nome e E-mail, usados para autenticação e comunicação
-    sobre a sua conta. Sua senha é armazenada utilizando criptografia. 
-    Não coletamos nenhum dados de saúde.
-  </p>
-
-  <p class="muted small">
+  <p class="apoio small">
     Já tem uma conta? <a href="{% url 'accounts:login' %}">Entrar</a>
   </p>
 </div>
+
+{% comment %}
+  A janela abaixo usa a tag dialog, que o próprio HTML tem para isso. Ela já
+  traz o fundo escurecido, o fechar com Esc e o foco preso dentro da janela,
+  então não precisamos escrever nada disso à mão.
+{% endcomment %}
+<dialog id="modal-saude" class="modal" aria-labelledby="modal-titulo">
+  <h2 id="modal-titulo">Como cuidamos dos seus dados de saúde</h2>
+
+  <ol class="topicos">
+    <li>
+      <strong>Dados coletados.</strong> Nome, e-mail e senha. Só isso. Não
+      pedimos CPF, telefone, endereço nem data de nascimento.
+    </li>
+    <li>
+      <strong>Uso exclusivamente clínico-informativo.</strong> O que você
+      informa no filtro de sintomas serve apenas para escolher quais materiais
+      de fontes oficiais mostrar na tela. Não vira cadastro, não é gravado e
+      não alimenta recomendação nenhuma.
+    </li>
+    <li>
+      <strong>Sigilo e criptografia.</strong> A senha é guardada só como hash
+      Argon2id, o segredo da verificação em duas etapas é cifrado com
+      AES-256-GCM, e todo o tráfego passa por HTTPS.
+    </li>
+    <li>
+      <strong>Direitos do titular.</strong> A qualquer momento você consulta
+      tudo o que guardamos, exporta em arquivo, revoga o consentimento e exclui
+      a conta, pela própria tela de "Meus dados".
+    </li>
+  </ol>
+
+  <p class="apoio small">
+    <a href="{% url 'privacy:policy' %}" target="_blank" rel="noopener">
+      Ler a Política de Privacidade completa
+    </a>
+  </p>
+
+  <div class="aceite">
+    <input type="checkbox" id="modal-aceite">
+    <label for="modal-aceite">
+      Li e aceito a Política de Privacidade e o tratamento dos meus dados
+    </label>
+  </div>
+
+  <div class="modal-acoes">
+    <button class="link" type="button" id="modal-fechar">Agora não</button>
+    <button class="botao" type="button" id="modal-continuar" disabled>
+      Concordar e Continuar
+    </button>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/consentimento.js' %}"></script>
+<script src="{% static 'js/mostrar-senha.js' %}"></script>
 {% endblock %}

@@ -44,7 +44,11 @@ class MinimizacaoTests(TestCase):
     def test_politica_de_privacidade_e_publica(self):
         resposta = self.client.get(reverse("privacy:policy"))
         self.assertEqual(resposta.status_code, 200)
-        self.assertContains(resposta, "Nenhum dado de saúde")
+        # A política precisa continuar declarando que guardar material depende
+        # de consentimento específico, e não do aceite geral (Art. 8º, §4º). Se
+        # essa frase sumir do texto, o teste falha e alguém tem que decidir
+        # conscientemente tirá-la, em vez de perdê-la numa revisão distraída.
+        self.assertContains(resposta, "consentimento específico")
 
 
 class ConsentimentoTests(TestCase):

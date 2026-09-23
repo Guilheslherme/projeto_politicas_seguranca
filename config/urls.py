@@ -24,5 +24,10 @@ urlpatterns = [
     path("", TemplateView.as_view(template_name="home.html"), name="home"),
     path("conta/", include("apps.accounts.urls")),
     path("privacidade/", include("apps.privacy.urls")),
+
+    # O acervo entra na raiz, para os endereços ficarem /sintomas/ e
+    # /condicoes/<slug>/. Vem depois da home porque o padrão "" acima casa
+    # apenas com o endereço vazio, e não engole os de baixo.
+    path("", include("apps.catalog.urls")),
 ]
     

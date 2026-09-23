@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Guardar materiais | Health In Sight{% endblock %}
+
+{% block content %}
+<div class="cartao cartao-estreito">
+  <h1>Guardar materiais na sua conta</h1>
+
+  <p class="apoio">
+    Esta função vem desligada. Antes de ligar, leia o que ela significa.
+  </p>
+
+  <ol class="topicos">
+    <li>
+      <strong>O que fica guardado.</strong> Qual material e a data em que você
+      guardou. Nada além disso: não há anotação, nem motivo, nem nota sua.
+    </li>
+    <li>
+      <strong>Por que pedimos de novo.</strong> Guardar um material sobre um
+      assunto indica interesse por um tema de saúde, e a LGPD trata isso como
+      dado pessoal sensível (Art. 5º, II). O aceite que você deu no cadastro
+      não vale aqui: consentimento genérico é nulo, ele precisa ser para uma
+      finalidade determinada (Art. 8º, §4º).
+    </li>
+    <li>
+      <strong>Sigilo.</strong> A lista é sua e só aparece para você, dentro da
+      conta. Todo o tráfego passa por HTTPS.
+    </li>
+    <li>
+      <strong>Seus direitos.</strong> Você vê a lista quando quiser, apaga um
+      item de cada vez, ou revoga o consentimento — e revogar apaga tudo o que
+      foi guardado, não só desliga a função.
+    </li>
+  </ol>
+
+  <p class="apoio small">
+    <a href="{% url 'privacy:policy' %}" target="_blank" rel="noopener">
+      Ler a Política de Privacidade completa
+    </a>
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="material" value="{{ material_id|default_if_none:'' }}">
+
+    {% comment %}
+      O "required" é quem garante o aceite: sem ele marcado, o navegador não
+      envia o formulário, com ou sem JavaScript. O script abaixo só acrescenta
+      o efeito visual de o botão nascer apagado.
+    {% endcomment %}
+    <div class="aceite">
+      <input type="checkbox" id="aceite-materiais" required>
+      <label for="aceite-materiais">
+        Concordo que o portal guarde na minha conta os materiais que eu
+        escolher, para a finalidade de consulta posterior.
+      </label>
+    </div>
+
+    <button class="botao block" type="submit" id="botao-consentir" disabled>
+      Concordar e Continuar
+    </button>
+  </form>
+
+  <p class="apoio small">
+    <a href="{% url 'catalog:meus_materiais' %}">Agora não</a>
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Efeito visual do requisito: o botão nasce apagado e acende ao marcar.
+  // A garantia de verdade é o "required" da caixa, que funciona sem isto.
+  const caixa = document.querySelector('#aceite-materiais');
+  const botao = document.querySelector('#botao-consentir');
+  caixa.addEventListener('change', function () {
+    botao.disabled = !caixa.checked;
+  });
+</script>
+{% endblock %}

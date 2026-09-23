@@ -155,7 +155,7 @@ de evento e a data.
 | 3.1 | Comunicação protegida por TLS/HTTPS | Atendido | Certificado TLS do Render, com TLS 1.3 negociado. Com `DEBUG` desligado, o Django ativa `SECURE_SSL_REDIRECT`, cookies `Secure` e HSTS de um ano, em `config/settings.py`. A conexão com o banco no Aiven também usa TLS 1.3, verificado a partir do ambiente local | Acessar https://projeto-politicas-seguranca.onrender.com e abrir os detalhes do cadeado, ou a aba Security do DevTools, que mostra a versão do TLS e o certificado |
 | 3.2 | Bloqueio de conexões não seguras | Atendido | Três camadas: a borda do Render responde HTTP com 301 para HTTPS; o Django repete o redirecionamento se a requisição chegar em HTTP; o cabeçalho HSTS faz o navegador recusar HTTP por conta própria nas visitas seguintes. O servidor recusa TLS 1.1 | Digitar `http://projeto-politicas-seguranca.onrender.com` na barra de endereço: o navegador termina em `https://` |
 | 3.3 | Evidência de tráfego cifrado | Atendido | Saídas reais de `curl` e `openssl s_client` contra o site publicado, e consulta ao status TLS da conexão com o MySQL, registradas em [evidencias.md](evidencias.md) | Aba Security do DevTools. Os comandos de terminal estão em [evidencias.md](evidencias.md) |
-| 3.4 | Dados sensíveis criptografados em repouso | Atendido | `EncryptedTOTPDevice` em `apps/accounts/models.py` cifra o segredo do 2FA, o dado mais perigoso do banco, antes de gravá-lo. A migração `0004_cifra_segredos_2fa_existentes` cifrou os segredos já existentes. Senhas e tokens de recuperação já eram guardados só como hash (blocos 1 e 2). O sistema não coleta dado sensível no sentido da LGPD, ver bloco 4 | Com uma conta de equipe, ativar o 2FA e abrir o perfil: o card "Dados técnicos" mostra "Segredo do 2FA no banco: aes256gcm (cifrado)" |
+| 3.4 | Dados sensíveis criptografados em repouso | Atendido | `EncryptedTOTPDevice` em `apps/accounts/models.py` cifra o segredo do 2FA, o dado mais perigoso do banco, antes de gravá-lo. A migração `0004_cifra_segredos_2fa_existentes` cifrou os segredos já existentes. Senhas e tokens de recuperação já eram guardados só como hash (blocos 1 e 2). O filtro de sintomas não grava o que é marcado. A única categoria sensível gravada é o material guardado na conta (`catalog_materialsalvo`), e ela **não é cifrada em repouso**: o registro é a chave estrangeira de um material público mais a data, e cifrar isso impediria listar e juntar as linhas sem devolver nenhuma proteção real, já que o conteúdo apontado é público. A proteção escolhida foi outra: minimização (só o vínculo e a data), função desligada por padrão, consentimento específico e eliminação na revogação. Registrado aqui como limitação assumida, ver bloco 4 | Com uma conta de equipe, ativar o 2FA e abrir o perfil: o card "Dados técnicos" mostra "Segredo do 2FA no banco: aes256gcm (cifrado)" |
 | 3.5 | Uso de algoritmo criptográfico adequado (ex.: AES) | Atendido | AES-256-GCM, pela biblioteca `cryptography`, em `apps/accounts/crypto.py`: chave de 256 bits, nonce aleatório de 96 bits a cada cifragem e autenticação do texto cifrado | O mesmo card mostra o algoritmo. Os 9 testes de `CriptografiaEmRepousoTests` provam cifragem, integridade e vínculo com a conta |
 | 3.6 | Chaves criptográficas protegidas | Atendido | `FIELD_ENCRYPTION_KEY` e `DJANGO_SECRET_KEY` vêm só de variáveis de ambiente: `.env` local, que está no `.gitignore`, e painel do Render. Sem chave válida a aplicação não inicia. Os testes sorteiam uma chave a cada execução, então nenhuma chave fica escrita no repositório | Consultar o `.gitignore` e o `.env.example`, que traz apenas os nomes das variáveis e o comando para gerar a chave |
 | 3.7 | Estratégia de criptografia documentada | Atendido | Seção "Estratégia de criptografia" abaixo | — |
@@ -258,7 +258,7 @@ certificadora, que não vai para o repositório.
 |---|---|---|---|---|
 | 4.1 | Listagem completa dos dados pessoais coletados | Atendido | Dicionário de dados abaixo, incluindo as tabelas de bibliotecas de terceiros. A versão para o titular está em `/privacidade/politica/` | Abrir a Política de Privacidade pelo rodapé de qualquer página |
 | 4.2 | Associação de cada dado a uma finalidade | Atendido | Colunas "Finalidade" e "Base legal" do dicionário e da tabela da política | Mesma página |
-| 4.3 | Evidência de minimização de dados | Atendido | Nenhum dado sensível coletado. O cadastro pede só nome, e-mail e senha. O teste `test_modelo_de_usuario_so_tem_os_campos_necessarios` falha se alguém acrescentar um campo à conta, e `test_cadastro_pede_apenas_nome_email_e_senha` faz o mesmo com o formulário | Abrir `/conta/register/`: apenas três dados e o aceite |
+| 4.3 | Evidência de minimização de dados | Atendido | O cadastro pede só nome, e-mail e senha. O filtro de sintomas não grava o que a pessoa marca, então pesquisar não deixa rastro na conta. Guardar material indica interesse por tema de saúde e por isso vem desligado, com consentimento próprio por finalidade (Art. 8º, §4º), e o registro guarda só o vínculo com o material e a data. O teste `test_modelo_de_usuario_so_tem_os_campos_necessarios` falha se alguém acrescentar um campo à conta, e `test_cadastro_pede_apenas_nome_email_e_senha` faz o mesmo com o formulário | Abrir `/conta/register/`: apenas três dados e o aceite |
 | 4.4 | Registro explícito de consentimento | Atendido | `ConsentRecord` em `apps/privacy/models.py`. O cadastro grava conta e aceite na mesma transação, com caixa obrigatória e desmarcada por padrão. `ConsentRequiredMiddleware` leva contas sem aceite vigente à tela de consentimento | Criar uma conta e abrir `/privacidade/meus-dados/`: o aceite aparece na tabela "Consentimentos". Com conta de equipe, também em "Registros de consentimento" no painel |
 | 4.5 | Consentimento associado à finalidade | Atendido | Campo `purpose` do registro, com a finalidade "Criação e manutenção da conta". A tabela da política liga cada dado à finalidade e à base legal | A coluna "Finalidade" da tabela de consentimentos em "Meus dados" |
 | 4.6 | Possibilidade de revogação do consentimento | Atendido | `delete_account` em `apps/privacy/views.py`: revoga o consentimento, preenchendo `revoked_at`, e exclui a conta na mesma transação, com confirmação da senha | Em "Meus dados", clicar em "Revogar consentimento e excluir conta" |
@@ -270,11 +270,15 @@ certificadora, que não vai para o repositório.
 
 ### Dicionário de dados
 
-Nenhum dado pessoal sensível (Art. 5º, II) é coletado. O Health In Sight não
-guarda condição de saúde, sintoma, histórico, exame nem interesse por doença, e
-o acervo é igual para todo mundo. A decisão está descrita no README e é a
-principal medida de minimização do projeto: não existe vazamento possível de
-dado de saúde, porque não existe dado de saúde guardado.
+O Health In Sight não registra condição de saúde, sintoma, histórico nem exame,
+o acervo é igual para todo mundo, e o filtro de sintomas não grava o que a
+pessoa marca. A tabela abaixo é a lista completa do que existe no banco.
+
+Uma única linha da tabela é de categoria sensível (Art. 5º, II): o material
+guardado na conta, porque guardar indica interesse por um tema de saúde. A
+função vem desligada, depende de consentimento próprio por finalidade (Art. 8º,
+§4º) e some inteira quando o consentimento é revogado. A decisão está descrita
+no README.
 
 | Dado | Onde fica | Categoria | Finalidade | Base legal | Minimização |
 |---|---|---|---|---|---|
@@ -283,6 +287,7 @@ dado de saúde, porque não existe dado de saúde guardado.
 | Hash da senha | `accounts_user.password` | Comum (credencial) | Autenticação | Consentimento (Art. 7º, I) | A senha não é guardada, só o hash Argon2id |
 | Segredo do 2FA | `otp_totp_totpdevice.key` | Comum (credencial) | Segunda etapa do login | Consentimento (Art. 7º, I) | Opcional, cifrado com AES-256-GCM e apagado ao desativar o 2FA |
 | Datas de cadastro, último login e última troca de senha | `accounts_user` | Comum | Controle e segurança da conta | Consentimento (Art. 7º, I) | Geradas pelo sistema, nada é pedido à pessoa |
+| Material guardado e data | `catalog_materialsalvo` | **Sensível**: indica interesse por tema de saúde | Reencontrar depois um material que a pessoa escolheu guardar | Consentimento específico e destacado (Art. 7º, I, e Art. 11, I) | Só o vínculo com o material e a data. Sem anotação, motivo ou nota. Função desligada por padrão; revogar o consentimento apaga tudo |
 | Registro de consentimento | `privacy_consentrecord` | Comum | Provar o aceite (Art. 8º, §2º) | Exercício regular de direitos (Art. 7º, VI) | Sem IP e sem navegador: só finalidade, versão e datas |
 | Acessos bem-sucedidos: e-mail, IP, navegador, entrada e saída | `axes_accesslog` | Comum | Detectar uso indevido da conta | Legítimo interesse (Art. 7º, IX) | Apagados na exclusão da conta |
 | Tentativas de login malsucedidas: e-mail digitado, IP, navegador e contagem | `axes_accessattempt` | Comum | Bloqueio por força bruta (requisito 1.11) | Legítimo interesse (Art. 7º, IX) | Senha e e-mail mascarados nos dados do formulário. Apagadas na exclusão |
@@ -417,6 +422,36 @@ O documento completo é [analise-de-logs.md](analise-de-logs.md). Em resumo:
 - ABNT NBR ISO/IEC 27002:2022, controle 8.15 (Registro de eventos).
 - KENT, K.; SOUPPAYA, M. *Guide to Computer Security Log Management*. NIST Special Publication 800-92. Gaithersburg: NIST, 2006.
 - NIST. *Secure Hash Standard (SHS)*. FIPS PUB 180-4. Gaithersburg: NIST, 2015.
+
+## Acervo de sintomas e condições
+
+Não é requisito do check-list, mas as decisões abaixo mudam o que o sistema
+mostra e precisam ficar registradas.
+
+**A fonte é quem associa.** Toda ligação entre sintoma e condição carrega
+obrigatoriamente o material que a afirma (`Associacao.material`, sem null e sem
+blank). Sem fonte, a associação não existe e nada aparece na tela.
+
+**Não existe ordenação por probabilidade.** Nenhum modelo tem campo de peso,
+pontuação, chance ou gravidade, e a lista sai em ordem alfabética. A ausência é
+deliberada: com um campo desses o portal viraria um verificador de sintomas.
+
+**Sinal de alerta interrompe.** Marcado um dos quatro sinais, a view devolve a
+tela de atendimento e para — não consulta associação nem monta lista. Misturar
+"pode ser urgente" com uma lista de leitura convidaria a pessoa a ler em vez de
+procurar socorro.
+
+**Não oferecemos folha para levar à consulta.** Chegou a ser prevista uma
+página impressa com perguntas para o profissional e os nomes das condições
+vistas. Foi descartada: um papel com nome de condição e de fonte oficial,
+entregue ao médico antes do exame, ancora o raciocínio dele no que um site
+listou — exatamente o efeito que o projeto evita. No lugar, o resultado termina
+com uma frase indicando procurar um profissional de saúde. É decisão, não
+funcionalidade faltando.
+
+**Pendência declarada:** avisar quem salvou um material quando a fonte o retira
+ou revisa. Depende de tarefa agendada e envio de e-mail, que não cabem nesta
+entrega.
 
 ## Blocos seguintes
 

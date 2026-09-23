@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Entrar | Health In Sight{% endblock %}
 
 {% block content %}
@@ -29,4 +30,8 @@
     <a href="{% url 'accounts:password_reset' %}">Esqueci minha senha</a>
   </p>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/mostrar-senha.js' %}"></script>
 {% endblock %}

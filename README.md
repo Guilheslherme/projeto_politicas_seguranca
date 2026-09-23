@@ -24,9 +24,11 @@ O site é informativo. Não faz diagnóstico, não receita nada e não substitui
 
 A LGPD trata dado de saúde como dado sensível, com regras mais rígidas que as dos dados comuns.
 
-Em vez de coletar esses dados e proteger com vários controles, o projeto simplesmente não coleta. Nenhum. O acervo é público e igual para todo mundo, sem personalização por condição de saúde. Assim não existe vazamento possível de dado sensível, porque não existe dado sensível guardado.
+A saída do projeto não foi coletar esses dados e cercá-los de controles: foi não coletar. O acervo é público e igual para todo mundo, sem personalização por condição de saúde, e o filtro de sintomas funciona sem gravar o que a pessoa marcou.
 
-O que o sistema guarda é só o necessário para a conta funcionar:
+Sobra um ponto em que o dado sensível aparece, e a gente preferiu encarar em vez de esconder: guardar um material na conta indica interesse por um tema de saúde. Por isso essa função vem desligada, tem consentimento próprio, pedido em tela separada, e revogar apaga o que foi guardado. É o Art. 8º, §4º da LGPD virando tela: consentimento genérico não vale, tem que ser para finalidade determinada.
+
+O que o sistema guarda hoje é só o necessário para a conta funcionar:
 
 - nome e e-mail, para identificar a pessoa e falar com ela
 - a senha, e mesmo assim só o hash, que não dá para reverter

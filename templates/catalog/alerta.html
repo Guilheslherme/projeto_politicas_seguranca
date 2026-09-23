@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Procure atendimento | Health In Sight{% endblock %}
+
+{% comment %}
+  Esta tela não tem menu. O bloco abaixo é o mesmo que o base.html usa para
+  desenhar a navegação, e aqui ele fica vazio de propósito: quem chegou aqui
+  tem uma coisa só a fazer, e qualquer link para outra parte do site é um
+  convite para adiar isso.
+{% endcomment %}
+{% block menu %}{% endblock %}
+
+{% block content %}
+<section class="alerta-tela">
+  <h1>Procure atendimento agora</h1>
+  <p class="alerta-texto">
+    O que você marcou está entre os sinais que não devem esperar. Vá a um
+    serviço de urgência ou ligue 192.
+  </p>
+
+  <p class="numero-192">192</p>
+
+  <p class="small">
+    <a href="{% url 'catalog:sintomas' %}?{{ request.GET.urlencode }}">Voltar e rever o que marquei</a>
+  </p>
+</section>
+{% endblock %}

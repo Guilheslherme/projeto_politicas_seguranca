@@ -1,67 +1,125 @@
+/* ---------------------------------------------------------------
+   Identidade visual. Cada cor tem um lugar fixo de uso.
+   --------------------------------------------------------------- */
 :root {
-  --bg: #f4f7f6;
-  --surface: #ffffff;
-  --text: #1c2330;
-  --muted: #5f7183;
-  --primary: #0f766e;
-  --primary-dark: #0b5852;
-  --danger: #b91c1c;
-  --border: #dbe4e2;
+  --verde: #3E7A3A;         /* botão, link e destaque */
+  --verde-claro: #E7EEE2;   /* fundo de marcador */
+  --tinta: #1C2A1E;         /* título e faixa escura */
+  --papel: #FBFAF6;         /* fundo da página */
+  --texto: #3A473A;         /* texto corrido */
+  --apoio: #566150;         /* texto secundário */
+  --linha: #DFE3D9;         /* bordas */
+  --alerta: #C77D3A;        /* SÓ no aviso de procurar atendimento */
+  --alerta-fundo: #FAF0E2;  /* fundo desse aviso */
+  --alerta-texto: #6E3F0F;  /* texto desse aviso */
+
+  /* Nomes antigos, usados por login, perfil, política e meus dados.
+     Apontam para as cores novas, então aquelas telas acompanham a
+     identidade sem precisar mexer em nenhuma delas. */
+  --bg: var(--papel); --surface: #fff; --text: var(--texto);
+  --muted: var(--apoio); --primary: var(--verde); --primary-dark: var(--tinta);
+  --danger: #b91c1c; --border: var(--linha);
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Outfit", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-weight: 300;
   background: var(--bg);
   color: var(--text);
   line-height: 1.55;
+
+  /* Rodapé sempre embaixo: a página ocupa a altura da tela inteira e
+     empilha cabeçalho, conteúdo e rodapé em coluna. */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* O conteúdo estica e ocupa a sobra, empurrando o rodapé para o fim. */
+main {
+  flex: 1;
 }
 
 a { color: var(--primary); }
 
-.site-header {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 1rem; padding: 1rem 1.5rem; background: var(--surface);
-  border-bottom: 1px solid var(--border); flex-wrap: wrap;
+/* --- Cabeçalho, presente em todas as telas --- */
+.cabecalho {
+  display: flex; align-items: center; gap: 1.5rem;
+  padding: 1rem 1.5rem; background: var(--papel);
+  border-bottom: 1px solid var(--linha);
 }
-.brand { font-weight: 700; font-size: 1.15rem; text-decoration: none; color: var(--text); }
-.site-header nav { display: flex; align-items: center; gap: 1rem; }
-.site-header nav a { text-decoration: none; }
+.marca { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; font-size: 1.1rem; color: var(--tinta); text-decoration: none; }
+/* Nunca abaixo de 16px: menor que isso a nervura some e a folha vira mancha. */
+.folha { width: 26px; height: 26px; color: var(--verde); }
+.menu { display: flex; align-items: center; gap: 1.25rem; margin-left: auto; }
+.menu a { color: var(--texto); text-decoration: none; }
+.menu a:hover { color: var(--verde); }
+/* O "Criar conta" é um link dentro do menu, então a regra acima também o
+   alcança — e ela é mais específica que .botao, porque usa classe mais
+   elemento. Sem estas duas linhas o texto sairia escuro sobre o fundo verde. */
+.menu a.botao { color: #fff; }
+.menu a.botao:hover { color: #fff; }
+.menu form { margin: 0; }
+.botao {
+  display: inline-block; padding: 0.55rem 1.2rem; border: 0; border-radius: 999px;
+  background: var(--verde); color: #fff; font: inherit; font-weight: 500;
+  text-decoration: none; text-align: center; cursor: pointer;
+}
+.botao:hover { background: var(--tinta); }
+/* O botão do menu só aparece no celular, no bloco @media do fim. */
+.botao-menu { display: none; background: none; border: 1px solid var(--linha); color: var(--tinta); }
 
 .container { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
 
-.card {
+/* Dois nomes para a mesma regra: ".cartao" é o nome novo, usado nas telas
+   novas, e ".card" continua valendo para as doze telas escritas antes. */
+.card, .cartao {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; padding: 1.75rem; margin-bottom: 1.5rem;
+  border-radius: 16px; padding: 1.75rem; margin-bottom: 1.5rem;
 }
-.card-narrow { max-width: 420px; margin-inline: auto; }
+/* Cartão das telas de conta: entrar, criar conta, recuperar senha. */
+.card-narrow, .cartao-estreito { max-width: 460px; margin-inline: auto; padding: 2.25rem; }
+.card-narrow h1, .cartao-estreito h1 { font-size: 1.8rem; margin-bottom: 1.25rem; }
 
-h1 { font-size: 1.6rem; margin-top: 0; }
+/* Essas telas têm pouco conteúdo, e o rodapé é empurrado para o fim da janela.
+   Sem isto o cartão fica colado no cabeçalho, com um vazio enorme embaixo.
+   ":has(.cartao-estreito)" quer dizer "quando este main tiver um cartão
+   estreito dentro dele" — e só nesse caso o conteúdo é centralizado na altura
+   que sobra. As telas compridas, como a política, não são afetadas. */
+main:has(.cartao-estreito), main:has(.card-narrow) { display: flex; flex-direction: column; }
+/* A margem automática come o espaço que sobra em cima e embaixo, centralizando
+   o cartão. Quando não sobra espaço, ela simplesmente vira zero — por isso um
+   formulário alto numa tela baixa continua inteiro, sem cortar o topo. */
+main > .cartao-estreito, main > .card-narrow { margin-block: auto; }
+
+/* Pesos: 600 título, 500 botão e rótulo, 400 link e menu, 300 texto corrido. */
+h1, h2, h3 { color: var(--tinta); font-weight: 600; }
+h1 { font-size: 1.6rem; margin-top: 0; letter-spacing: -0.028em; }
 .muted { color: var(--muted); }
 .small { font-size: 0.875rem; }
 .mono { font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem; }
 .break { word-break: break-all; }
 
-label { display: block; font-weight: 600; font-size: 0.9rem; margin: 0.85rem 0 0.3rem; }
+label { display: block; font-weight: 500; font-size: 0.9rem; margin: 0.85rem 0 0.3rem; }
 
 input[type="text"], input[type="email"], input[type="password"] {
   width: 100%; padding: 0.6rem 0.7rem; border: 1px solid var(--border);
-  border-radius: 8px; font-size: 1rem;
+  border-radius: 10px; font-size: 1rem;
 }
 input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
 
 button, .btn-primary, .btn-danger {
   display: inline-block; padding: 0.65rem 1.1rem; border: 0;
-  border-radius: 8px; font-size: 0.95rem; font-weight: 600;
+  border-radius: 999px; font-family: inherit; font-size: 0.95rem; font-weight: 500;
   cursor: pointer; text-decoration: none;
 }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-dark); }
 .btn-danger { background: var(--danger); color: #fff; }
 .block { display: block; width: 100%; margin-top: 1.2rem; }
-.link-button { background: none; color: var(--primary); padding: 0; }
 .inline-form { display: inline; }
 
 .messages { list-style: none; padding: 0; }
@@ -73,9 +131,6 @@ button, .btn-primary, .btn-danger {
 .message.success { background: #e8f6ec; border-color: #bfe3ca; }
 .alert.error { background: #fdeaea; border: 1px solid #f5c2c2; padding: 0.7rem 1rem; border-radius: 8px; }
 
-.hero { padding: 2.5rem 0; }
-.hero h1 { font-size: 2rem; }
-
 .data-list { display: grid; grid-template-columns: minmax(160px, 260px) 1fr; gap: 0.4rem 1rem; }
 .data-list dt { font-weight: 600; color: var(--muted); }
 .data-list dd { margin: 0; }
@@ -83,17 +138,143 @@ button, .btn-primary, .btn-danger {
 .qr { display: block; margin: 1.2rem auto; width: 200px; height: 200px; image-rendering: pixelated; }
 .steps { padding-left: 1.2rem; color: var(--muted); }
 
-.site-footer {
-  border-top: 1px solid var(--border); padding: 1.5rem; text-align: center;
-  color: var(--muted); font-size: 0.85rem; background: var(--surface);
+/* --- Rodapé, presente em todas as telas --- */
+.rodape {
+  border-top: 1px solid var(--linha); padding: 1.5rem; text-align: center;
+  color: var(--apoio); font-size: 0.85rem;
 }
 
-@media (max-width: 560px) {
-  .data-list { grid-template-columns: 1fr; }
+/* --- Home, seção 1: abertura em duas colunas --- */
+.abertura { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: center; padding: 2.5rem 0 3rem; }
+.etiqueta { color: var(--verde); font-weight: 500; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 0.75rem; }
+.abertura h1 { font-size: 2.4rem; line-height: 1.15; margin: 0 0 1rem; }
+.linha-grande { font-size: 1.05rem; margin: 0 0 1rem; }
+.apoio { color: var(--apoio); font-size: 0.9rem; }
+.marcadores { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+/* Cada marcador é um atalho: leva para a seleção já com aquele sintoma
+   marcado. Sublinhado sai, porque a pílula já mostra que dá para clicar. */
+.marcador { background: var(--verde-claro); color: var(--tinta); border-radius: 999px; padding: 0.35rem 0.8rem; font-size: 0.85rem; text-decoration: none; }
+.marcador:hover { background: var(--verde); color: #fff; }
+
+/* --- Home, seção 2: faixa de alerta --- */
+.faixa-alerta {
+  background: var(--alerta-fundo); border: 1px solid var(--alerta);
+  border-radius: 16px; padding: 1.5rem; margin-bottom: 3rem;
 }
+.faixa-alerta h2, .faixa-alerta p { color: var(--alerta-texto); margin: 0; }
+.faixa-alerta h2 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+
+/* --- Home, seções 3 e 4: como funciona e fontes --- */
+.tres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+.numero { color: var(--verde); font-weight: 600; font-size: 1.5rem; margin: 0; }
+.duas { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: center; }
+.caixas { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.caixa { border: 1px solid var(--linha); border-radius: 10px; padding: 0.9rem; font-size: 0.9rem; text-align: center; }
+
+/* --- Home, seção 5: faixa escura de privacidade --- */
+.faixa-escura {
+  background: var(--tinta); color: var(--papel); border-radius: 16px;
+  padding: 2rem; margin: 3rem 0;
+  display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;
+}
+.faixa-escura h2 { color: var(--papel); margin: 0 0 0.75rem; }
+.direitos { list-style: none; padding: 0; margin: 0; }
+/* Branco com pouca opacidade em vez de uma cor nova: a linha precisa aparecer
+   sobre o fundo escuro sem acrescentar tom fora da paleta. */
+.direitos li { border-bottom: 1px solid rgba(255, 255, 255, 0.15); padding: 0.5rem 0; font-size: 0.9rem; }
+.link-claro { color: var(--verde-claro); grid-column: 1 / -1; }
+
+/* --- Catálogo: tela de marcar sintomas --- */
+.grupo { border: 0; margin: 0 0 1.5rem; padding: 1.75rem; }
+.grupo legend { padding: 0; }
+.grupo h1, .grupo h2 { margin: 0 0 0.5rem; font-size: 1.3rem; }
+/* Fundo e borda de alerta separam os quatro sinais dos seis comuns antes de a
+   pessoa ler qualquer palavra: são grupos com consequências diferentes. */
+.grupo-alerta { background: var(--alerta-fundo); border: 1px solid var(--alerta); border-radius: 16px; }
+.grupo-alerta h2, .grupo-alerta p { color: var(--alerta-texto); }
+.opcoes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.9rem; }
+.opcao { display: flex; align-items: center; gap: 0.5rem; margin: 0; font-weight: 400; }
+
+/* --- Catálogo: tela de alerta --- */
+.alerta-tela { background: var(--alerta-fundo); border: 1px solid var(--alerta); border-radius: 16px; padding: 2.5rem; text-align: center; }
+.alerta-tela h1, .alerta-texto { color: var(--alerta-texto); }
+.alerta-texto { font-size: 1.1rem; }
+.numero-192 { color: var(--alerta-texto); font-size: 4rem; font-weight: 600; margin: 1rem 0; letter-spacing: -0.028em; }
+
+/* --- Catálogo: tela de resultado --- */
+.aviso-incompletude { border-left: 4px solid var(--verde); background: var(--verde-claro); padding: 1rem 1.25rem; border-radius: 10px; }
+.fontes-lista { padding-left: 1.1rem; margin: 0.4rem 0 1.2rem; }
+.fontes-lista li { margin-bottom: 0.4rem; }
+.cartao .faixa-alerta { margin: 0; padding: 1rem 1.25rem; }
+.cartao .faixa-alerta h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+/* Fechamento do resultado: a única conduta que o portal indica. */
+.fechamento { border-top: 1px solid var(--linha); padding-top: 1.25rem; margin-top: 1.5rem; }
+
+/* --- Catálogo: página da condição --- */
+/* O texto ocupa a coluna larga e a faixa de emergência fica ao lado, visível
+   sem rolar. */
+.condicao { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; align-items: start; }
+.condicao .faixa-escura { display: block; margin: 0; }
+.numero-192-claro { color: var(--verde-claro); font-size: 2.5rem; font-weight: 600; margin: 0.5rem 0 0; letter-spacing: -0.028em; }
+
+/* --- Cadastro: campos, regras da senha e caixa de aceite --- */
+.campo { margin-bottom: 0.25rem; }
+.regras { color: var(--apoio); font-size: 0.85rem; }
+.regras ul { margin: 0.3rem 0; padding-left: 1.1rem; }
+.aceite { display: flex; align-items: flex-start; gap: 0.6rem; margin: 1rem 0 0.4rem; }
+.aceite label { margin: 0; font-weight: 400; }
+/* Botão com cara de link, para ação que não navega, como abrir o modal.
+   Continua sendo <button> porque é ação, e não endereço. */
+.link { background: none; border: 0; padding: 0; color: var(--verde); font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* --- Mostrar e esconder a senha ---
+   A borda arredondada sai do campo e passa para a caixa em volta dele. Assim a
+   caixa inteira é que parece o campo, e o olho fica dentro da moldura sem
+   precisar flutuar por cima de nada. O campo de senha continua com a mesma
+   largura dos outros campos do formulário. */
+.campo-senha {
+  display: flex; align-items: center;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+}
+/* flex: 1 faz o campo ocupar a sobra e vence a largura de 100% que ele tem. */
+.campo-senha input { flex: 1; border: 0; background: none; }
+/* O anel de foco passa a ser desenhado pela caixa quando o campo lá dentro
+   recebe o cursor, que é o que :focus-within quer dizer. */
+.campo-senha input:focus { outline: 0; }
+.campo-senha:focus-within { outline: 2px solid var(--verde); outline-offset: 1px; }
+.olho { background: none; border: 0; padding: 0 0.7rem 0 0.2rem; color: var(--apoio); cursor: pointer; line-height: 0; }
+.olho:hover { color: var(--verde); }
+.olho svg { width: 20px; height: 20px; }
+/* O Edge desenha um olho próprio dentro do campo. Sem esta linha, o usuário
+   veria dois olhos, um ao lado do outro, fazendo a mesma coisa. */
+input::-ms-reveal { display: none; }
+
+/* --- Modal de consentimento (tag <dialog>) --- */
+.modal { border: 0; border-radius: 16px; padding: 2rem; max-width: 34rem; background: var(--surface); color: var(--texto); }
+/* ::backdrop é o fundo que a própria tag desenha atrás da janela. */
+.modal::backdrop { background: rgba(28, 42, 30, 0.55); backdrop-filter: blur(3px); }
+.modal h2 { margin: 0 0 1rem; font-size: 1.3rem; }
+.topicos { margin: 0; padding-left: 1.2rem; }
+.topicos li { margin-bottom: 0.7rem; }
+.modal-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 1rem; margin-top: 1.25rem; }
+.botao:disabled { background: var(--linha); color: var(--apoio); cursor: not-allowed; }
+
 /* Tabelas da política de privacidade e da consulta aos dados (requisito 4) */
 .table-wrap { overflow-x: auto; margin: 0.6rem 0 1rem; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .data-table th, .data-table td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid #e4e7eb; vertical-align: top; }
 .data-table th { color: var(--muted); font-weight: 600; }
 .checkbox { display: flex; gap: 0.5rem; align-items: center; font-weight: 400; }
+
+/* --- Celular: o único bloco de media query do arquivo --- */
+@media (max-width: 760px) {
+  .cabecalho { flex-wrap: wrap; gap: 0.75rem; }
+  .botao-menu { display: block; margin-left: auto; }
+  /* A lista some e só volta quando o botão acrescenta a classe "aberto". */
+  .menu { display: none; width: 100%; flex-direction: column; align-items: flex-start; gap: 0.9rem; }
+  .menu.aberto { display: flex; }
+  .data-list { grid-template-columns: 1fr; }
+  /* Tudo que é duas ou três colunas vira uma só. */
+  .abertura, .duas, .caixas, .tres, .faixa-escura, .opcoes, .condicao { grid-template-columns: 1fr; }
+  .abertura h1 { font-size: 1.9rem; }
+}
