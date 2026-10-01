@@ -1,1 +1,79 @@
+name: DevSecOps Pipeline
 
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  # ─────────────────────────────────────────────
+  # JOB 1: Varredura de Segredos com TruffleHog
+  # ─────────────────────────────────────────────
+  secrets-scanning:
+    name: "🔑 Secrets Scanning (TruffleHog)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # histórico completo para o TruffleHog varrer todos os commits
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified  # reporta apenas segredos verificados (reduz falsos positivos)
+
+  # ─────────────────────────────────────────────
+  # JOB 2: SCA — Análise de Dependências (Trivy)
+  # ─────────────────────────────────────────────
+  dependency-scan:
+    name: "📦 Dependency Scan (Trivy SCA)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy on requirements.txt
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs          # varredura no sistema de arquivos (detecta requirements.txt)
+          scan-ref: .
+          scanners: vuln         # foca em vulnerabilidades (CVEs)
+          severity: HIGH,CRITICAL
+          exit-code: "1"         # bloqueia o build se encontrar falha HIGH ou CRITICAL
+          ignore-unfixed: true   # ignora CVEs sem correção disponível
+          format: table
+
+  # ─────────────────────────────────────────────
+  # JOB 3: SAST com GitHub CodeQL
+  # (opção permitida para repositórios públicos)
+  # ─────────────────────────────────────────────
+  sast-codeql:
+    name: "🧠 SAST (CodeQL)"
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write  # necessário para publicar alertas na aba Security do GitHub
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          # Queries de segurança e qualidade para Python
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:python
