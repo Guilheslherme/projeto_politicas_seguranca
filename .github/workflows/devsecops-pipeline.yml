@@ -23,8 +23,9 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
+          # Sem base/head explícito: a action lê github.event.before e github.sha
+          # automaticamente a partir do contexto do push, evitando o erro
+          # "BASE and HEAD commits are the same".
           extra_args: --only-verified  # reporta apenas segredos verificados (reduz falsos positivos)
 
   # ─────────────────────────────────────────────
