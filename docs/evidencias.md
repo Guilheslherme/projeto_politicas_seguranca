@@ -521,6 +521,26 @@ python manage.py test apps.accounts.tests.CriptografiaEmRepousoTests apps.accoun
 
 # Bloco 4 — Conformidade com a LGPD
 
+## Evidências de conformidade com a LGPD
+
+**4.4 — A tela apresenta a caixa de aceite explícito da Política de Privacidade antes do cadastro.**
+![Aviso de privacidade e consentimento](img/13-aviso-privacidade.png)
+
+**4.8 — A tela permite consultar os dados da conta e das credenciais.**
+![Consulta dos dados do titular — parte 1](img/14-meus-dados1.png)
+
+**4.8 — A tela permite consultar consentimentos e registros de segurança.**
+![Consulta dos dados do titular — parte 2](img/14-meus-dados2.png)
+
+**4.9 — O arquivo JSON exporta os dados consultados sem revelar os valores da senha e do segredo 2FA.**
+![Exportação dos dados](img/15-exportacao.png)
+
+**4.6 — A tela explica a revogação do consentimento e pede confirmação antes da ação.**
+![Revogação do consentimento](img/16-revogacao.png)
+
+**4.10 — A mensagem confirma a exclusão da conta e dos dados pessoais associados.**
+![Confirmação da exclusão](img/17-exclusao.png)
+
 ## 4.1 a 4.3 — Dados coletados, finalidade e minimização
 
 A Política de Privacidade fica em `/privacidade/politica/`, pública e ligada no
@@ -948,6 +968,7 @@ python manage.py test apps.catalog
 | Grupo | Quantidade | O que cobre |
 |---|---|---|
 | `AcervoTests` | 6 | filtro, desvio de alerta, associação obrigatória, material desativado, ordem alfabética, `distinct()` |
+| `ComentariosDeTemplateTests` | 1 | verifica comentários curtos nos templates |
 | `ConsentimentoPorFinalidadeTests` | 2 | recusa sem consentimento, e revogação por finalidade |
 
 ---
@@ -959,10 +980,10 @@ python manage.py test apps
 ```
 
 ```
-Ran 91 tests
+Ran 92 tests in 12.168s
 
 OK
 ```
 
 São 17 testes do bloco 1, 24 do bloco 2, 13 do bloco 3, 19 do bloco 4, 10 do
-bloco 5 e 8 do acervo.
+bloco 5 e 9 do acervo.
