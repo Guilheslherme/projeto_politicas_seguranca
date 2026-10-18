@@ -6,11 +6,23 @@
 Portal que reúne informações confiáveis sobre saúde em um só lugar.
 
 Trabalho da disciplina de Políticas de Informação, do curso de Sistemas de Informação da Universidade de Mogi das Cruzes.
+Orientador: Prof. Dr. Fabiano Bezerra Menegidio.
 
 Site no ar: https://projeto-politicas-seguranca.onrender.com <br>
 KanBan: https://github.com/users/Guilheslherme/projects/3
 
-Documentação: [check-list dos requisitos](docs/checklist.md) · [evidências de funcionamento](docs/evidencias.md) · [análise de logs](docs/analise-de-logs.md)
+## Entrega final
+
+| Material | Arquivo |
+| --- | --- |
+| Pôster (UMC Summit 2026) | [docs/poster/Poster_Health_In_Sight.pdf](docs/poster/Poster_Health_In_Sight.pdf) |
+| Resumo científico | [docs/resumo/Resumo_Health_In_Sight.pdf](docs/resumo/Resumo_Health_In_Sight.pdf) |
+| Documentação técnico-científica | [docs/Health-In-Sight-Documentacao-Tecnico-Cientifica.pdf](docs/Health-In-Sight-Documentacao-Tecnico-Cientifica.pdf) |
+| Modelo entidade-relacionamento | [imagem](docs/img/mer.png) · [arquivo editável do draw.io](docs/Health-In-Sight-MER.drawio) |
+| Relatório técnico DevSecOps | [docs/Relatorio_Tecnico_DevSecOps_Health_In_Sight.pdf](docs/Relatorio_Tecnico_DevSecOps_Health_In_Sight.pdf) |
+| Check-list dos requisitos | [docs/checklist.md](docs/checklist.md) |
+| Evidências de funcionamento | [docs/evidencias.md](docs/evidencias.md) |
+| Análise de logs | [docs/analise-de-logs.md](docs/analise-de-logs.md) |
 
 ## O problema
 
@@ -93,7 +105,7 @@ Cada senha recebe um salt aleatório próprio. Duas pessoas com a mesma senha fi
 
 **Criptografia em repouso.** O segredo da verificação em duas etapas é o dado mais perigoso do banco, porque com ele dá para gerar os códigos de acesso de alguém. Ele é cifrado com AES-256-GCM antes de ser gravado.
 
-**Transporte.** Em produção o site força HTTPS e a conexão com o banco é cifrada, com verificação do certificado.
+**Transporte.** Em produção o site força HTTPS, com HSTS de um ano, e a conexão com o banco exige TLS usando o certificado do Aiven.
 
 **Trilha de auditoria.** Todo login, logout, senha recusada, bloqueio e uso do segundo fator vira um registro. Cada registro guarda o hash do anterior, formando uma corrente: alterar ou apagar um evento do meio faz o elo seguinte deixar de bater, e o comando `python manage.py verificar_logs` aponta onde. O que essa proteção **não** cobre está escrito em [docs/analise-de-logs.md](docs/analise-de-logs.md) — apagar os últimos registros não é detectado, e quem tem o banco e o código consegue recalcular a corrente.
 
@@ -130,6 +142,8 @@ python manage.py analisar_logs --horas 24    # resume a trilha do período
 ## O que ainda falta
 
 Avisar quem guardou um material quando a fonte o retira ou revisa — depende de tarefa agendada e envio de e-mail. E a retenção da trilha de auditoria, hoje indefinida: apagar registro antigo quebraria a corrente do que vem depois, e resolver isso é decisão de projeto, não linha de código. As duas pendências estão registradas no [check-list](docs/checklist.md).
+
+Os próximos passos de segurança, definidos a partir da análise de riscos, estão na seção 3.5 da [documentação técnico-científica](docs/Health-In-Sight-Documentacao-Tecnico-Cientifica.pdf).
 
 ## Referências
 
