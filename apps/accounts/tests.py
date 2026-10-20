@@ -6,11 +6,13 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.conf import settings
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django_otp.admin import OTPAdminSite
 from django_otp.oath import TOTP
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
@@ -127,6 +129,78 @@ class DuasEtapasTests(TestCase):
         resposta = self.client.get(reverse("accounts:otp_setup"))
 
         self.assertIn("no-store", resposta["Cache-Control"])
+
+
+class PainelAdministrativoTests(TestCase):
+    """Risco R01: o /admin/ exige o segundo fator de quem é da equipe."""
+
+    def setUp(self):
+        self.equipe = User.objects.create_superuser(
+            email="equipe@exemplo.com",
+            full_name="Pessoa Da Equipe",
+            password=SENHA,
+        )
+        self.device = EncryptedTOTPDevice.objects.create(
+            user=self.equipe, name="celular", confirmed=True
+        )
+        ConsentRecord.registrar_aceite(self.equipe)
+        reset()
+
+    def _entrar(self, com_codigo=True):
+        self.client.post(
+            reverse("accounts:login"),
+            {"username": self.equipe.email, "password": SENHA},
+        )
+        if com_codigo:
+            self.client.post(
+                reverse("accounts:otp_verify"),
+                {"token": codigo_atual(self.device)},
+            )
+
+    def test_superusuario_com_2fa_nao_entra_no_admin_so_com_senha(self):
+        # Antes, o formulário do /admin/login/ criava a sessão com e-mail e
+        # senha, sem pedir o código.
+        resposta = self.client.post(
+            reverse("admin:login"),
+            {"username": self.equipe.email, "password": SENHA},
+        )
+
+        self.assertRedirects(resposta, reverse("accounts:login"), fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertNotEqual(self.client.get(reverse("admin:index")).status_code, 200)
+
+    def test_sessao_sem_codigo_confirmado_nao_abre_o_admin(self):
+        # Sessão de alguém da equipe que não passou pelo código nesta sessão.
+        self.client.force_login(self.equipe)
+
+        resposta = self.client.get(reverse("admin:index"))
+
+        self.assertRedirects(
+            resposta,
+            f"{reverse('admin:login')}?next={reverse('admin:index')}",
+            fetch_redirect_response=False,
+        )
+
+    def test_superusuario_que_confirmou_o_codigo_abre_o_admin(self):
+        self._entrar()
+
+        resposta = self.client.get(reverse("admin:index"))
+
+        self.assertEqual(resposta.status_code, 200)
+
+    def test_equipe_sem_2fa_ativo_e_levada_ao_perfil(self):
+        self.device.delete()
+        self._entrar(com_codigo=False)
+
+        resposta = self.client.get(reverse("admin:index"), follow=True)
+
+        self.assertRedirects(resposta, reverse("accounts:profile"))
+        self.assertContains(resposta, "exige a verificação em duas etapas")
+
+    def test_cadastro_de_dispositivos_do_django_otp_saiu_do_painel(self):
+        # Ele gravaria o segredo em texto puro, fora do EncryptedTOTPDevice.
+        self.assertIsInstance(admin.site, OTPAdminSite)
+        self.assertFalse(admin.site.is_registered(TOTPDevice))
 
 
 class SessaoTests(TestCase):
