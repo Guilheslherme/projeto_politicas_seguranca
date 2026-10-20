@@ -11,7 +11,7 @@ pronta para o ataque que este mesmo comando deveria denunciar.
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.audit.models import AuthEvent
+from apps.audit.models import AuthEvent, AuthEventRetentionCheckpoint
 
 
 class Command(BaseCommand):
@@ -24,9 +24,11 @@ class Command(BaseCommand):
         # dois eventos no mesmo instante ficariam em ordem indefinida.
         consulta = AuthEvent.objects.order_by("id").iterator()
 
-        # O hash que o próximo registro tem que declarar como anterior. O
-        # primeiro de todos precisa apontar para a gênese.
-        esperado = AuthEvent.GENESE
+        # O hash que o próximo registro tem que declarar como anterior. Sem
+        # expurgação, o primeiro aponta para a gênese; depois de um corte,
+        # aponta para o hash mínimo preservado no checkpoint.
+        checkpoint = AuthEventRetentionCheckpoint.objects.first()
+        esperado = checkpoint.last_event_hash if checkpoint else AuthEvent.GENESE
         total = 0
         problema = None
 

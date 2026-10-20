@@ -350,7 +350,7 @@ APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8000")
 # Versão do texto da Política de Privacidade. Cada aceite grava a versão que foi
 # aceita. Mudar este valor ao alterar o texto faz com que todas as contas sejam
 # levadas a ler e aceitar a versão nova antes de continuar.
-PRIVACY_POLICY_VERSION = "1.0"
+PRIVACY_POLICY_VERSION = "1.1"
 
 
 # ---------------------------------------------------------------------------

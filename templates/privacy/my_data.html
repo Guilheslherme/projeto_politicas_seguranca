@@ -113,5 +113,25 @@
       </tbody>
     </table>
   </div>
+
+  <h3>Trilha de autenticação</h3>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Evento</th><th>Data</th><th>Identificador</th><th>Endereço IP</th><th>Navegador</th></tr></thead>
+      <tbody>
+        {% for e in dados.registros_de_seguranca.trilha_de_autenticacao %}
+          <tr>
+            <td>{{ e.evento }}</td>
+            <td>{{ e.data|date:"d/m/Y H:i" }}</td>
+            <td class="mono">{{ e.identificador_selado|default:"—" }}</td>
+            <td class="mono">{{ e.endereco_ip|default:"—" }}</td>
+            <td class="small">{{ e.navegador }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5">Nenhum registro.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

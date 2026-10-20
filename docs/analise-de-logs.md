@@ -303,39 +303,29 @@ cuidando disso — um confere que os dois eventos foram gravados com o número d
 conta, e o outro falha se aparecer qualquer linha de erro na saída durante a
 exclusão.
 
-**Uma tensão que fica em aberto:** o IP e o navegador dos eventos de uma conta
-excluída continuam na trilha, porque entram no hash e apagá-los quebraria a
-cadeia. Na trilha de recuperação de senha, que não é encadeada, esses campos são
-apagados. É uma diferença real entre os dois registros, e ela é consequência
-direta da escolha de encadear. O que resolveria o caso é a retenção, abaixo:
-apagar registros por idade, e não por pessoa.
+O IP e o navegador dos eventos de uma conta excluída continuam na trilha até o
+fim do prazo de retenção, porque entram no hash e apagá-los individualmente
+quebraria a cadeia. Na trilha de recuperação de senha, que não é encadeada,
+esses campos são apagados no momento da exclusão. A rotina de retenção abaixo
+remove os eventos de autenticação por idade, em vez de editar eventos ligados a
+uma pessoa.
 
 ---
 
-## 7. Retenção: hoje indefinida
+## 7. Retenção: seis meses
 
-**Hoje a trilha não é apagada nunca.** Não existe prazo configurado nem rotina de
-limpeza. Escrever isso é mais honesto do que deixar o item em branco: indefinido
-é uma resposta, ausência de resposta é um buraco.
+A Política de Privacidade informa retenção de seis meses para AuthEvent,
+adotada tomando como referência o prazo do Art. 15 do Marco Civil da Internet.
+O comando `python manage.py expurgar_eventos_auth` remove eventos vencidos e
+grava um `AuthEventRetentionCheckpoint` com o hash e os metadados mínimos do
+último evento removido. O comando `verificar_logs` usa esse hash como ponto de
+partida para conferir a cadeia mantida; se todo o histórico tiver expirado, o
+próximo evento também começa nesse ponto.
 
-É uma pendência, e ela tem uma dificuldade própria que não é preguiça nossa:
-**apagar registro antigo quebra a cadeia do que vem depois.** Se a gente apagar
-os eventos de janeiro, o primeiro evento de fevereiro passa a apontar para um
-hash que não existe mais, e a conferência acusa adulteração para sempre.
-
-Sair disso exige uma decisão de projeto, não uma linha de código. Os caminhos que
-a gente enxerga:
-
-- **Reancorar depois de limpar:** ao apagar um trecho antigo, gravar um registro
-  de fechamento que diga "daqui para trás foi apagado em tal data, o último hash
-  era este". A corrente recomeça dali. Mas isso reintroduz no código uma rotina
-  que mexe na cadeia, que é justamente o que a gente evitou.
-- **Arquivar antes de apagar:** exportar o trecho antigo com os hashes, guardar
-  fora, e só então apagar. Depende de ter onde guardar fora.
-
-Para o tamanho deste projeto, a retenção indefinida não é problema prático — a
-trilha tem poucas centenas de linhas. Num sistema de verdade seria, e por isso
-fica registrado aqui como decisão pendente.
+A expurgação só remove uma faixa antiga no início da cadeia. Se encontrar um
+evento vencido depois de outro ainda dentro do prazo, o comando interrompe sem
+apagar nada, pois uma lacuna no meio quebraria o encadeamento. O checkpoint fica
+no banco e não contém IP, navegador nem identificador selado do evento.
 
 ---
 
