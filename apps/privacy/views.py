@@ -8,6 +8,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from apps.audit.models import AuthEvent
@@ -50,6 +51,7 @@ def consent(request):
 
 
 @login_required
+@never_cache
 def my_data(request):
     """Consulta a todos os dados guardados sobre a conta (requisito 4.8)."""
     return render(

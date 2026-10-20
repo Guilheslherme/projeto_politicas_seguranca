@@ -1,6 +1,35 @@
 /* ---------------------------------------------------------------
    Identidade visual. Cada cor tem um lugar fixo de uso.
    --------------------------------------------------------------- */
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("../fonts/outfit-300.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/outfit-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/outfit-500.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../fonts/outfit-600.ttf") format("truetype");
+}
+
 :root {
   --verde: #3E7A3A;         /* botão, link e destaque */
   --verde-claro: #E7EEE2;   /* fundo de marcador */

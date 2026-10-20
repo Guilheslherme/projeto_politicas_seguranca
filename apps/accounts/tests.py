@@ -121,6 +121,13 @@ class DuasEtapasTests(TestCase):
         resposta = self.client.get(reverse("accounts:otp_verify"))
         self.assertRedirects(resposta, reverse("accounts:login"))
 
+    def test_tela_de_ativacao_2fa_nao_pode_ser_cacheada(self):
+        self.client.force_login(self.user)
+
+        resposta = self.client.get(reverse("accounts:otp_setup"))
+
+        self.assertIn("no-store", resposta["Cache-Control"])
+
 
 class SessaoTests(TestCase):
     """Requisitos 1.9 e 1.10."""
