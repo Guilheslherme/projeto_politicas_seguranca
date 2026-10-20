@@ -84,10 +84,10 @@
           <td>Após a exclusão, fica sem nenhum vínculo com você</td>
         </tr>
         <tr>
-          <td>Endereço IP, navegador, data e hora de acessos, de tentativas malsucedidas e de pedidos de recuperação de senha</td>
+          <td>Evento de autenticação, identificador interno selado, endereço IP, navegador e data; também registramos acessos, tentativas malsucedidas e pedidos de recuperação de senha</td>
           <td>Detectar e bloquear tentativas de invasão da sua conta</td>
           <td>Legítimo interesse (Art. 7º, IX)</td>
-          <td>Até a exclusão da conta. Dos pedidos de recuperação, fica só o tipo de evento e a data, sem IP e sem vínculo com você</td>
+          <td>A trilha de autenticação fica por 6 meses após cada evento e depois é apagada. Adotamos esse prazo tomando como referência o Art. 15 do Marco Civil da Internet; permanece apenas um hash de corte para conferir a sequência, sem os campos do evento. Na trilha de recuperação, após a exclusão da conta, ficam o tipo do evento e a data, sem IP e sem vínculo com você</td>
         </tr>
         <tr>
           <td>Cookie de sessão</td>
@@ -104,6 +104,21 @@
     Não vendemos nem cedemos dados. Eles passam apenas pelos serviços que operam
     o sistema: Render (hospedagem), Aiven (banco de dados) e Brevo, que recebe
     seu nome e e-mail somente para entregar a mensagem de recuperação de senha.
+  </p>
+
+  <h2>Serviços externos e transferência internacional</h2>
+  <p>
+    O portal carrega a fonte tipográfica pelo Google Fonts. Para entregar a
+    folha de estilos e os arquivos da fonte, o navegador se conecta diretamente
+    aos servidores do Google e envia o endereço IP e informações técnicas da
+    requisição.
+  </p>
+  <p>
+    A hospedagem da aplicação é feita pela Render na região de Oregon, e o
+    banco de dados pela Aiven em São Francisco, nos Estados Unidos. Por isso,
+    dados pessoais podem ser armazenados e tratados fora do Brasil. Essa
+    transferência internacional deve observar as hipóteses e garantias do
+    Art. 33 da LGPD.
   </p>
 
   <h2>Seus direitos</h2>

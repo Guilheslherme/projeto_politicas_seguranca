@@ -10,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import EncryptedTOTPDevice
-from apps.audit.models import PasswordResetLog
+from apps.audit.models import AuthEvent, PasswordResetLog
 from apps.catalog.models import MaterialSalvo
 
 from .models import ConsentRecord
@@ -100,6 +100,16 @@ def reunir_dados_do_titular(user):
                     "endereco_ip": evento.ip_address,
                 }
                 for evento in PasswordResetLog.objects.filter(user=user)
+            ],
+            "trilha_de_autenticacao": [
+                {
+                    "evento": evento.get_event_display(),
+                    "data": evento.created_at,
+                    "identificador_selado": evento.usuario_ref,
+                    "endereco_ip": evento.ip_address,
+                    "navegador": evento.user_agent,
+                }
+                for evento in AuthEvent.objects.filter(user=user).order_by("created_at", "id")
             ],
         },
     }

@@ -2,11 +2,11 @@ import json
 
 from axes.models import AccessAttempt, AccessLog
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.models import EncryptedTOTPDevice, PasswordResetToken
-from apps.audit.models import PasswordResetLog
+from apps.audit.models import AuthEvent, PasswordResetLog
 
 from .models import ConsentRecord
 
@@ -49,6 +49,11 @@ class MinimizacaoTests(TestCase):
         # essa frase sumir do texto, o teste falha e alguém tem que decidir
         # conscientemente tirá-la, em vez de perdê-la numa revisão distraída.
         self.assertContains(resposta, "consentimento específico")
+        self.assertContains(resposta, "6 meses")
+        self.assertContains(resposta, "Google Fonts")
+        self.assertContains(resposta, "Oregon")
+        self.assertContains(resposta, "São Francisco")
+        self.assertContains(resposta, "Art. 33")
 
 
 class ConsentimentoTests(TestCase):
@@ -71,7 +76,7 @@ class ConsentimentoTests(TestCase):
         registro = ConsentRecord.objects.get()
         self.assertEqual(registro.user.email, "titular@exemplo.com")
         self.assertEqual(registro.purpose, ConsentRecord.Purpose.CONTA)
-        self.assertEqual(registro.policy_version, "1.0")
+        self.assertEqual(registro.policy_version, "1.1")
         self.assertIsNotNone(registro.granted_at)
         self.assertTrue(registro.is_active)
 
@@ -127,7 +132,7 @@ class ConsentimentoTests(TestCase):
 
         # O aceite antigo continua no histórico, ao lado do novo.
         versoes = set(ConsentRecord.objects.filter(user=user).values_list("policy_version", flat=True))
-        self.assertEqual(versoes, {"1.0", "2.0"})
+        self.assertEqual(versoes, {"1.1", "2.0"})
 
     def test_revogacao_registra_a_data_e_preserva_o_historico(self):
         self.cadastrar()
@@ -141,7 +146,7 @@ class ConsentimentoTests(TestCase):
         # Sem vínculo com a conta, que não existe mais, mas com finalidade,
         # versão e datas preservadas.
         self.assertIsNone(registro.user)
-        self.assertEqual(registro.policy_version, "1.0")
+        self.assertEqual(registro.policy_version, "1.1")
 
 
 class DireitosDoTitularTests(TestCase):
@@ -161,6 +166,17 @@ class DireitosDoTitularTests(TestCase):
             user=self.user,
             ip_address=IP_DE_TESTE,
             user_agent="Navegador de Teste",
+        )
+        request = RequestFactory().get(
+            "/",
+            REMOTE_ADDR=IP_DE_TESTE,
+            HTTP_USER_AGENT="Navegador da Trilha",
+        )
+        self.evento_autenticacao = AuthEvent.registrar(
+            request,
+            AuthEvent.Event.LOGIN_OK,
+            user=self.user,
+            detail="login de teste",
         )
         AccessLog.objects.create(
             username=self.user.email, ip_address=IP_DE_TESTE,
@@ -185,7 +201,10 @@ class DireitosDoTitularTests(TestCase):
         self.assertContains(resposta, "titular@exemplo.com")
         self.assertContains(resposta, "Pessoa Titular")
         self.assertContains(resposta, IP_DE_TESTE)
+        self.assertContains(resposta, "Navegador da Trilha")
+        self.assertContains(resposta, str(self.user.pk))
         self.assertContains(resposta, "Criação e manutenção da conta")
+        self.assertContains(resposta, "Login concluído")
 
     def test_consulta_nao_exibe_credenciais(self):
         conteudo = self.client.get(reverse("privacy:my_data")).content.decode()
@@ -204,6 +223,10 @@ class DireitosDoTitularTests(TestCase):
         dados = json.loads(resposta.content)
         self.assertEqual(dados["conta"]["email"], "titular@exemplo.com")
         self.assertEqual(len(dados["consentimentos"]), 1)
+        eventos = dados["registros_de_seguranca"]["trilha_de_autenticacao"]
+        evento_teste = next(evento for evento in eventos if evento["endereco_ip"] == IP_DE_TESTE)
+        self.assertEqual(evento_teste["identificador_selado"], self.user.pk)
+        self.assertEqual(evento_teste["navegador"], "Navegador da Trilha")
         # O login do próprio teste também é registrado pelo django-axes, então
         # a conferência procura o acesso criado no setUp, e não uma contagem.
         ips = {a["endereco_ip"] for a in dados["registros_de_seguranca"]["acessos_realizados"]}

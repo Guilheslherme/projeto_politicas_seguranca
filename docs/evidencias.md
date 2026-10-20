@@ -569,7 +569,7 @@ Cada aceite grava uma linha em `ConsentRecord`:
 |---|---|
 | `user` | a conta que aceitou |
 | `purpose` | `CONTA` — Criação e manutenção da conta |
-| `policy_version` | `1.0` |
+| `policy_version` | `1.1` |
 | `granted_at` | data e hora do aceite, gravadas automaticamente |
 | `revoked_at` | vazio enquanto o consentimento vale |
 
@@ -606,8 +606,9 @@ Perfil → "Privacidade e meus dados" → `/privacidade/meus-dados/`.
 
 A página mostra, agrupados: dados da conta, descrição de como as credenciais
 são guardadas, consentimentos, acessos realizados, tentativas de acesso
-malsucedidas e eventos de recuperação de senha. Hash da senha e segredo do 2FA
-aparecem descritos, nunca com os valores.
+malsucedidas, eventos de recuperação de senha e eventos AuthEvent, com IP,
+navegador e identificador selado. Hash da senha e segredo do 2FA aparecem
+descritos, nunca com os valores.
 
 *Captura a incluir: `img/26-meus-dados.png`.*
 
@@ -625,8 +626,8 @@ Estrutura do arquivo:
   "gerado_em": "...",
   "conta": { "nome_completo": "...", "email": "...", "cadastrado_em": "...", "ultima_troca_de_senha": "...", "verificacao_em_duas_etapas": "ativa" },
   "credenciais": { "senha": "Guardada apenas como hash Argon2id...", "segredo_do_2fa": "Guardado cifrado com AES-256-GCM..." },
-  "consentimentos": [ { "finalidade": "Criação e manutenção da conta", "versao_da_politica": "1.0", "aceito_em": "...", "revogado_em": null } ],
-  "registros_de_seguranca": { "acessos_realizados": [...], "tentativas_de_acesso_malsucedidas": [...], "recuperacao_de_senha": [...] }
+  "consentimentos": [ { "finalidade": "Criação e manutenção da conta", "versao_da_politica": "1.1", "aceito_em": "...", "revogado_em": null } ],
+  "registros_de_seguranca": { "acessos_realizados": [...], "tentativas_de_acesso_malsucedidas": [...], "recuperacao_de_senha": [...], "trilha_de_autenticacao": [...] }
 }
 ```
 

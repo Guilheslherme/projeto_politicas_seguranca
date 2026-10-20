@@ -259,7 +259,11 @@ class AuthEvent(models.Model):
             # hash, gravariam apontando os dois para ele, e a cadeia bifurcaria.
             # O SQLite ignora o comando, porque só permite uma escrita por vez.
             ultimo = cls.objects.select_for_update().order_by("-id").first()
-            hash_anterior = ultimo.hash_atual if ultimo else cls.GENESE
+            if ultimo:
+                hash_anterior = ultimo.hash_atual
+            else:
+                checkpoint = AuthEventRetentionCheckpoint.objects.select_for_update().first()
+                hash_anterior = checkpoint.last_event_hash if checkpoint else cls.GENESE
 
             registro = cls(
                 event=event,
@@ -283,3 +287,27 @@ class AuthEvent(models.Model):
             detail,
         )
         return registro
+
+
+class AuthEventRetentionCheckpoint(models.Model):
+    """Ponto de continuidade depois da expurgação de eventos antigos.
+
+    O checkpoint conserva apenas o hash do último evento removido e metadados
+    do corte. Assim a primeira linha mantida continua verificável sem manter
+    os campos pessoais que compunham os eventos removidos.
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    last_event_id = models.BigIntegerField("identificador do ultimo evento removido")
+    last_event_hash = models.CharField("hash do ultimo evento removido", max_length=64)
+    last_event_created_at = models.DateTimeField("data do ultimo evento removido")
+    cutoff_at = models.DateTimeField("data de corte")
+    deleted_count = models.PositiveIntegerField("eventos removidos neste corte")
+    checkpointed_at = models.DateTimeField("checkpoint gravado em", default=timezone.now)
+
+    class Meta:
+        verbose_name = "ponto de verificacao da trilha de autenticacao"
+        verbose_name_plural = "pontos de verificacao da trilha de autenticacao"
+
+    def __str__(self):
+        return f"Corte ate evento {self.last_event_id}: {self.last_event_hash}"

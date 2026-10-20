@@ -1,5 +1,6 @@
 """Testes da trilha de autenticação (requisitos 5.1, 5.2 e 5.3)."""
 
+from datetime import timedelta
 from io import StringIO
 
 from django.contrib.auth import get_user_model
@@ -7,8 +8,9 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
-from .models import AuthEvent
+from .models import AuthEvent, AuthEventRetentionCheckpoint
 
 User = get_user_model()
 
@@ -120,6 +122,47 @@ class CadeiaDeHashesTests(TestCase):
 
         self.assertIn("Cadeia integra", saida.getvalue())
         self.assertIn("3 registros", saida.getvalue())
+
+
+class RetencaoDaTrilhaTests(TestCase):
+    """A expurgação preserva a continuidade da cadeia com um checkpoint."""
+
+    def criar_evento(self, data, hash_anterior):
+        evento = AuthEvent(
+            event=AuthEvent.Event.LOGIN_OK,
+            created_at=data,
+            hash_anterior=hash_anterior,
+        )
+        evento.hash_atual = evento.calcular_hash()
+        evento.save()
+        return evento
+
+    def test_expurga_prefixo_antigo_grava_checkpoint_e_preserva_verificacao(self):
+        agora = timezone.now()
+        primeiro = self.criar_evento(agora - timedelta(days=200), AuthEvent.GENESE)
+        segundo = self.criar_evento(agora - timedelta(days=190), primeiro.hash_atual)
+        recente = self.criar_evento(agora, segundo.hash_atual)
+
+        call_command("expurgar_eventos_auth", stdout=StringIO())
+
+        self.assertFalse(AuthEvent.objects.filter(pk__in=[primeiro.pk, segundo.pk]).exists())
+        self.assertTrue(AuthEvent.objects.filter(pk=recente.pk).exists())
+        checkpoint = AuthEventRetentionCheckpoint.objects.get(pk=1)
+        self.assertEqual(checkpoint.last_event_hash, segundo.hash_atual)
+        self.assertEqual(checkpoint.deleted_count, 2)
+
+        call_command("verificar_logs", stdout=StringIO(), stderr=StringIO())
+
+    def test_novo_evento_usa_checkpoint_quando_toda_a_trilha_foi_expurgada(self):
+        antigo = self.criar_evento(timezone.now() - timedelta(days=200), AuthEvent.GENESE)
+
+        call_command("expurgar_eventos_auth", stdout=StringIO())
+        checkpoint = AuthEventRetentionCheckpoint.objects.get(pk=1)
+        novo = AuthEvent.registrar(None, AuthEvent.Event.LOGIN_OK)
+
+        self.assertFalse(AuthEvent.objects.filter(pk=antigo.pk).exists())
+        self.assertEqual(novo.hash_anterior, checkpoint.last_event_hash)
+        call_command("verificar_logs", stdout=StringIO(), stderr=StringIO())
 
 
 class AnaliseDaTrilhaTests(TestCase):
