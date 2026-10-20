@@ -40,7 +40,10 @@
 
   <form method="post">
     {% csrf_token %}
-    <input type="hidden" name="material" value="{{ material_id|default_if_none:'' }}">
+    {{ form.material }}
+    {% for error in form.material.errors %}
+      <p class="erro" role="alert">{{ error }}</p>
+    {% endfor %}
 
     {% comment %}
       O "required" é quem garante o aceite: sem ele marcado, o navegador não
@@ -48,12 +51,15 @@
       o efeito visual de o botão nascer apagado.
     {% endcomment %}
     <div class="aceite">
-      <input type="checkbox" id="aceite-materiais" required>
+      {{ form.aceite }}
       <label for="aceite-materiais">
         Concordo que o portal guarde na minha conta os materiais que eu
         escolher, para a finalidade de consulta posterior.
       </label>
     </div>
+    {% for error in form.aceite.errors %}
+      <p class="erro" role="alert">{{ error }}</p>
+    {% endfor %}
 
     <button class="botao block" type="submit" id="botao-consentir" disabled>
       Concordar e Continuar

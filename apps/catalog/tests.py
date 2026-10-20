@@ -188,7 +188,8 @@ class ConsentimentoPorFinalidadeTests(TestCase):
     def test_revogar_apaga_os_salvamentos_e_poupa_a_conta(self):
         """8. Revogar uma finalidade não derruba o consentimento da conta."""
         self.client.post(
-            reverse("catalog:consentimento_materiais"), {"material": self.material.id}
+            reverse("catalog:consentimento_materiais"),
+            {"material": self.material.id, "aceite": "on"},
         )
         self.assertEqual(MaterialSalvo.objects.count(), 1)
 
@@ -205,3 +206,38 @@ class ConsentimentoPorFinalidadeTests(TestCase):
         # E a conta continua de pé: quem desiste de guardar materiais não está
         # desistindo da conta.
         self.assertTrue(ConsentRecord.tem_consentimento_vigente(self.user))
+
+    def test_material_nao_numerico_nao_registra_consentimento(self):
+        """9. ID malformado é rejeitado no formulário, antes de qualquer gravação."""
+        resposta = self.client.post(
+            reverse("catalog:consentimento_materiais"),
+            {"material": "abc", "aceite": "on"},
+        )
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertTrue(resposta.context["form"].has_error("material"))
+        self.assertFalse(
+            ConsentRecord.objects.filter(
+                user=self.user, purpose=ConsentRecord.Purpose.MATERIAL_SALVO
+            ).exists()
+        )
+        self.assertEqual(MaterialSalvo.objects.count(), 0)
+
+    def test_aceite_ausente_nao_registra_consentimento_nem_salva_material(self):
+        """10. Checkbox obrigatório também é validado no servidor."""
+        resposta = self.client.post(
+            reverse("catalog:consentimento_materiais"),
+            {"material": str(self.material.id)},
+        )
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertTrue(resposta.context["form"].has_error("aceite"))
+        self.assertContains(resposta, 'name="aceite"')
+        self.assertContains(resposta, 'id="aceite-materiais"')
+        self.assertContains(resposta, "required")
+        self.assertFalse(
+            ConsentRecord.objects.filter(
+                user=self.user, purpose=ConsentRecord.Purpose.MATERIAL_SALVO
+            ).exists()
+        )
+        self.assertEqual(MaterialSalvo.objects.count(), 0)
