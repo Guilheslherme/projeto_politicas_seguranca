@@ -14,6 +14,7 @@ from django.db import transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 from django_otp import login as otp_login
 
 from apps.audit.models import AuthEvent, PasswordResetLog
@@ -168,6 +169,7 @@ def otp_verify(request):
 
 
 @login_required
+@never_cache
 def otp_setup(request):
     device = EncryptedTOTPDevice.objects.filter(user=request.user, confirmed=False).first()
     if device is None:

@@ -73,7 +73,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ request.csp_nonce }}">
   // Efeito visual do requisito: o botão nasce apagado e acende ao marcar.
   // A garantia de verdade é o "required" da caixa, que funciona sem isto.
   const caixa = document.querySelector('#aceite-materiais');

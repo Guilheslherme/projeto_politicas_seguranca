@@ -4,8 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Health In Sight{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
 <body>
@@ -80,7 +78,7 @@
     </p>
   </footer>
 
-  <script>
+  <script nonce="{{ request.csp_nonce }}">
     // Menu do celular: o botão mostra e esconde a lista de links.
     const botaoMenu = document.querySelector('.botao-menu');
     const menu = document.querySelector('.menu');

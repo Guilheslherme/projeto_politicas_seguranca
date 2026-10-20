@@ -1,7 +1,11 @@
 import json
+import re
+from pathlib import Path
 
 from axes.models import AccessAttempt, AccessLog
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.staticfiles import finders
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
@@ -50,7 +54,7 @@ class MinimizacaoTests(TestCase):
         # conscientemente tirá-la, em vez de perdê-la numa revisão distraída.
         self.assertContains(resposta, "consentimento específico")
         self.assertContains(resposta, "6 meses")
-        self.assertContains(resposta, "Google Fonts")
+        self.assertNotContains(resposta, "Google Fonts")
         self.assertContains(resposta, "Oregon")
         self.assertContains(resposta, "São Francisco")
         self.assertContains(resposta, "Art. 33")
@@ -198,6 +202,7 @@ class DireitosDoTitularTests(TestCase):
     def test_consulta_mostra_dados_da_conta_e_registros(self):
         resposta = self.client.get(reverse("privacy:my_data"))
 
+        self.assertIn("no-store", resposta["Cache-Control"])
         self.assertContains(resposta, "titular@exemplo.com")
         self.assertContains(resposta, "Pessoa Titular")
         self.assertContains(resposta, IP_DE_TESTE)
@@ -279,3 +284,50 @@ class DireitosDoTitularTests(TestCase):
         ConsentRecord.objects.update(policy_version="0.9")
         resposta = self.client.get(reverse("privacy:delete_account"))
         self.assertEqual(resposta.status_code, 200)
+
+
+class CabecalhosEFontesLocaisTests(TestCase):
+    """Content Security Policy por nonce e fonte servida pelos estáticos."""
+
+    def test_csp_aplica_nonce_unico_a_scripts_inline(self):
+        resposta = self.client.get(reverse("home"))
+        csp = resposta["Content-Security-Policy"]
+        correspondencia = re.search(r"script-src 'self' 'nonce-([^']+)'", csp)
+
+        self.assertIsNotNone(correspondencia)
+        nonce = correspondencia.group(1)
+        self.assertContains(resposta, f'<script nonce="{nonce}">')
+        self.assertIn("font-src 'self'", csp)
+        self.assertNotIn("'unsafe-inline'", csp)
+
+        outra_resposta = self.client.get(reverse("home"))
+        outro_csp = outra_resposta["Content-Security-Policy"]
+        outro_nonce = re.search(r"script-src 'self' 'nonce-([^']+)'", outro_csp).group(1)
+        self.assertNotEqual(nonce, outro_nonce)
+
+    def test_nonce_tambem_cobre_script_da_tela_de_consentimento(self):
+        user = User.objects.create_user(
+            email="csp@exemplo.com", full_name="Pessoa CSP", password=SENHA
+        )
+        ConsentRecord.registrar_aceite(user)
+        self.client.force_login(user)
+
+        resposta = self.client.get(reverse("catalog:consentimento_materiais"))
+        nonce = re.search(
+            r"script-src 'self' 'nonce-([^']+)'", resposta["Content-Security-Policy"]
+        ).group(1)
+
+        self.assertContains(resposta, f'<script nonce="{nonce}">')
+
+    def test_outfit_e_carregada_localmente_e_a_politica_nao_cita_google_fonts(self):
+        base = Path(settings.BASE_DIR, "templates", "base.html").read_text(encoding="utf-8")
+        css = Path(settings.BASE_DIR, "static", "css", "style.css").read_text(encoding="utf-8")
+        politica = Path(
+            settings.BASE_DIR, "templates", "privacy", "policy.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("fonts.googleapis.com", base)
+        self.assertNotIn("Google Fonts", politica)
+        for peso in ("300", "400", "500", "600"):
+            self.assertIsNotNone(finders.find(f"fonts/outfit-{peso}.ttf"))
+            self.assertIn(f"outfit-{peso}.ttf", css)
