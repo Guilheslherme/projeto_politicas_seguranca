@@ -14,6 +14,7 @@ from django.views.decorators.http import require_POST
 
 from apps.privacy.models import ConsentRecord
 
+from .forms import ConsentimentoMateriaisForm
 from .models import Material, MaterialSalvo
 
 # A finalidade é uma só, e fica numa constante para não haver duas grafias dela
@@ -29,18 +30,33 @@ def consentimento(request):
     cadastro, não serve aqui: a LGPD exige consentimento para finalidade
     determinada, e um aceite genérico é nulo (Art. 8º, §4º).
     """
-    # Guarda para qual material a pessoa veio, para salvá-lo logo depois do
-    # aceite em vez de obrigá-la a procurar a página de novo.
-    material_id = request.GET.get("material") or request.POST.get("material")
-
     if request.method == "POST":
-        ConsentRecord.registrar_aceite(request.user, FINALIDADE)
-        messages.success(request, "Consentimento registrado. Agora você pode guardar materiais.")
-        if material_id:
-            return _guardar(request, material_id)
-        return redirect("catalog:meus_materiais")
+        form = ConsentimentoMateriaisForm(request.POST)
+        if form.is_valid():
+            # Valida também a existência antes de registrar o aceite, para uma
+            # seleção inexistente nunca deixar consentimento gravado.
+            material_id = form.cleaned_data["material"]
+            material = (
+                get_object_or_404(Material, pk=material_id, ativo=True)
+                if material_id is not None
+                else None
+            )
 
-    return render(request, "catalog/consentimento_materiais.html", {"material_id": material_id})
+            ConsentRecord.registrar_aceite(request.user, FINALIDADE)
+            if material is not None:
+                MaterialSalvo.objects.get_or_create(user=request.user, material=material)
+                messages.success(request, "Consentimento registrado e material guardado.")
+            else:
+                messages.success(
+                    request, "Consentimento registrado. Agora você pode guardar materiais."
+                )
+            return redirect("catalog:meus_materiais")
+    else:
+        # Guarda para qual material a pessoa veio, para salvá-lo logo depois do
+        # aceite em vez de obrigá-la a procurar a página de novo.
+        form = ConsentimentoMateriaisForm(initial={"material": request.GET.get("material")})
+
+    return render(request, "catalog/consentimento_materiais.html", {"form": form})
 
 
 @login_required
