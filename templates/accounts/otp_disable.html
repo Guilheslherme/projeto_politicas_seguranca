@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Desativar 2FA{% endblock %}
+
+{% block content %}
+<div class="card card-narrow">
+  <h1>Desativar a verificação em duas etapas</h1>
+
+  <p>
+    Sem ela, quem descobrir sua senha consegue entrar na sua conta. Para
+    confirmar que é você, digite a senha e o código do aplicativo (ou um código
+    de reserva).
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <label for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+    {{ form.password }}
+    <label for="{{ form.codigo.id_for_label }}">{{ form.codigo.label }}</label>
+    {{ form.codigo }}
+    <button type="submit" class="btn-danger block">Desativar 2FA</button>
+  </form>
+
+  <p class="small"><a href="{% url 'accounts:profile' %}">Cancelar</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head><meta charset="utf-8"></head>
+<body style="font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color: #1f2933; line-height: 1.55;">
+  <p>Olá, {{ nome }}.</p>
+
+  <p>Sua conta no <strong>Health In Sight</strong> foi criada. Para ativá-la, confirme seu e-mail:</p>
+
+  <p>
+    <a href="{{ link }}" style="display: inline-block; background: #1d6f5c; color: #ffffff; padding: 0.75rem 1.4rem; border-radius: 8px; text-decoration: none; font-weight: 600;">Confirmar e-mail</a>
+  </p>
+
+  <p style="font-size: 0.875rem; color: #52606d;">
+    Se o botão não funcionar, copie e cole este endereço no navegador:<br>
+    <span style="word-break: break-all;">{{ link }}</span>
+  </p>
+
+  <p style="font-size: 0.875rem; color: #52606d;">
+    O link vale por {{ horas }} horas e só pode ser usado uma vez.
+  </p>
+
+  <p style="font-size: 0.875rem; color: #52606d;">
+    Se não foi você que se cadastrou, ignore esta mensagem. Sem a confirmação,
+    a conta não é ativada.
+  </p>
+
+  <p style="font-size: 0.875rem; color: #52606d;">Health In Sight</p>
+</body>
+</html>

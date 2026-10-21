@@ -1,0 +1,13 @@
+Olá, {{ nome }}.
+
+Sua conta no Health In Sight foi criada. Para ativá-la, abra o endereço abaixo:
+
+{{ link }}
+
+O link vale por {{ horas }} horas e só pode ser usado uma vez.
+
+Se não foi você que se cadastrou, ignore esta mensagem. Sem a confirmação, a
+conta não é ativada.
+
+--
+Health In Sight

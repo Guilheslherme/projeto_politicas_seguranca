@@ -1,0 +1,13 @@
+Olá, {{ nome }}.
+
+Alguém tentou criar uma conta no Health In Sight com este e-mail, que já tem
+cadastro. Nenhuma conta nova foi criada e nada mudou na sua.
+
+Se foi você e esqueceu a senha, peça uma nova por aqui:
+
+{{ link }}
+
+Se não foi você, pode ignorar esta mensagem.
+
+--
+Health In Sight

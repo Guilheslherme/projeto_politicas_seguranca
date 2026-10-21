@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from apps.accounts.limites import confirmacao_bloqueada, registrar_confirmacao_errada
 from apps.audit.models import AuthEvent
 from apps.audit.signals import registrar_evento
 
@@ -92,7 +93,15 @@ def delete_account(request):
     determina que eles sejam eliminados ao fim do tratamento (Arts. 15, III, e
     16).
     """
+    # Risco R12: a senha pedida aqui não passa pelo axes, então sem limite
+    # quem achasse uma sessão aberta poderia testar senhas à vontade.
+    if confirmacao_bloqueada(request, "excluir_conta"):
+        return render(request, "accounts/limite_excedido.html", status=429)
+
     form = DeleteAccountForm(request.user, request.POST or None)
+
+    if request.method == "POST" and not form.is_valid():
+        registrar_confirmacao_errada(request, "excluir_conta")
 
     if request.method == "POST" and form.is_valid():
         user = request.user

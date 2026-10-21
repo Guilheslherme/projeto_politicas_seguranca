@@ -141,6 +141,9 @@ class ConsentimentoTests(TestCase):
     def test_revogacao_registra_a_data_e_preserva_o_historico(self):
         self.cadastrar()
         user = User.objects.get()
+        # Desde o R08, a conta só entra depois de confirmar o e-mail.
+        user.is_active = True
+        user.save(update_fields=["is_active"])
         self.client.force_login(user)
 
         self.client.post(reverse("privacy:delete_account"), {"password": SENHA})

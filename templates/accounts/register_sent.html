@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Confira seu e-mail | Health In Sight{% endblock %}
+
+{% block content %}
+<div class="card card-narrow">
+  <h1>Confira seu e-mail</h1>
+
+  <p>
+    Enviamos uma mensagem para o endereço informado. Abra o link que está nela
+    para ativar a conta e depois entre normalmente.
+  </p>
+
+  <p class="muted small">
+    Não chegou em alguns minutos? Veja a caixa de spam ou cadastre-se de novo
+    com o mesmo e-mail para receber outro link.
+  </p>
+
+  <p class="small"><a href="{% url 'accounts:login' %}">Ir para o login</a></p>
+</div>
+{% endblock %}

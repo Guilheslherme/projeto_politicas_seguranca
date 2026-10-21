@@ -43,6 +43,53 @@ class OTPTokenForm(forms.Form):
         return token
 
 
+class DesativarDoisFatoresForm(forms.Form):
+    """Confirmação forte para desligar o 2FA: senha e código (risco R12).
+
+    Desligar o 2FA tira a proteção que impede quem tem só a senha de entrar.
+    Pedir os dois fatores de novo impede que alguém com a sessão aberta de
+    outra pessoa faça isso com um clique.
+    """
+
+    password = forms.CharField(
+        label="Senha atual",
+        widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}),
+    )
+    codigo = forms.CharField(
+        label="Código do aplicativo ou código de reserva",
+        max_length=16,
+        widget=forms.TextInput(attrs={"autocomplete": "one-time-code"}),
+    )
+
+    def __init__(self, user, *args, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        # Importado aqui para evitar import circular com models e views.
+        from . import codigos_reserva
+        from .models import EncryptedTOTPDevice
+
+        dados = super().clean()
+        senha, codigo = dados.get("password"), (dados.get("codigo") or "").strip()
+        if not senha or not codigo:
+            return dados
+
+        # A mesma mensagem para senha e código errados: dizer qual dos dois
+        # falhou ajudaria quem está tentando adivinhar.
+        erro = forms.ValidationError("Senha ou código incorretos.")
+        if not self.user.check_password(senha):
+            raise erro
+
+        if codigo.isdigit() and len(codigo) == 6:
+            device = EncryptedTOTPDevice.objects.filter(user=self.user, confirmed=True).first()
+            if device is None or not device.verify_token(codigo):
+                raise erro
+        elif codigos_reserva.usar_codigo(self.user, codigo) is None:
+            raise erro
+        return dados
+
+
 class CodigoReservaForm(forms.Form):
     """Código de reserva, para quem está sem o celular (risco R05)."""
 
@@ -92,10 +139,22 @@ class RegistrationForm(UserCreationForm):
         )
 
     def clean_email(self):
-        email = self.cleaned_data["email"].lower().strip()
-        if User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError("Ja existe uma conta com este e-mail.")
-        return email
+        # Risco R08: o formulário não diz mais se o e-mail já tem conta. A
+        # mensagem "Ja existe uma conta com este e-mail" deixava qualquer um
+        # testar endereços. Quem decide o que fazer com e-mail repetido é a
+        # view, que responde igual nos dois casos.
+        return self.cleaned_data["email"].lower().strip()
+
+    def validate_unique(self):
+        # O ModelForm também acusaria o e-mail repetido, pelo unique=True do
+        # modelo. A unicidade continua garantida pelo banco: a view só cria a
+        # conta quando o endereço está livre.
+        exclude = self._get_validation_exclusions()
+        exclude.add("email")
+        try:
+            self.instance.validate_unique(exclude=exclude)
+        except forms.ValidationError as erro:
+            self._update_errors(erro)
 
 from django.contrib.auth.forms import SetPasswordForm
 

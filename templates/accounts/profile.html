@@ -17,10 +17,9 @@
       {% csrf_token %}
       <button type="submit">Gerar novos códigos de reserva</button>
     </form>
-    <form method="post" action="{% url 'accounts:otp_disable' %}">
-      {% csrf_token %}
-      <button type="submit" class="btn-danger">Desativar 2FA</button>
-    </form>
+    {% if not user.is_staff %}
+      <a class="btn-danger" href="{% url 'accounts:otp_disable' %}">Desativar 2FA</a>
+    {% endif %}
   {% else %}
     <a class="btn-primary" href="{% url 'accounts:otp_setup' %}">Ativar 2FA</a>
   {% endif %}

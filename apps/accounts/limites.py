@@ -18,7 +18,7 @@ from django.conf import settings
 from django.db.models import Min
 from django.shortcuts import render
 from django.utils import timezone
-from django_ratelimit.core import is_ratelimited
+from django_ratelimit.core import get_usage, is_ratelimited
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,37 @@ def limitar(grupo):
         return envolvida
 
     return decorator
+
+
+# Confirmações erradas aceitas por conta, em telas que pedem a senha de novo
+# dentro de uma sessão já aberta (risco R12). Sem limite, quem achasse uma
+# sessão aberta poderia testar senhas ali à vontade, fora do alcance do axes.
+FALHAS_DE_CONFIRMACAO = "5/15m"
+
+
+def _pela_conta(group, request):
+    return str(request.user.pk)
+
+
+def confirmacao_bloqueada(request, grupo):
+    """Diz se a conta logada esgotou as confirmações erradas do grupo.
+
+    Só lê a contagem, sem somar: quem ainda não errou não gasta tentativa.
+    O is_ratelimited sem incrementar só acusaria acima do limite, deixando
+    passar uma tentativa a mais; por isso a comparação é feita aqui.
+    """
+    uso = get_usage(
+        request, group=f"{grupo}:falhas", key=_pela_conta,
+        rate=FALHAS_DE_CONFIRMACAO, increment=False,
+    )
+    return uso is not None and uso["count"] >= uso["limit"]
+
+
+def registrar_confirmacao_errada(request, grupo):
+    is_ratelimited(
+        request, group=f"{grupo}:falhas", key=_pela_conta,
+        rate=FALHAS_DE_CONFIRMACAO, increment=True,
+    )
 
 
 def tempo_de_bloqueio(request=None):

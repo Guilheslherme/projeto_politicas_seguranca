@@ -29,11 +29,26 @@ from apps.privacy.models import ConsentRecord
 from . import codigos_reserva
 from .crypto import FalhaNaDecifragem, cifrar, decifrar
 from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
-from .models import EncryptedTOTPDevice, PasswordResetToken
+from .models import EmailConfirmationToken, EncryptedTOTPDevice, PasswordResetToken
 
 User = get_user_model()
 
 SENHA = "TrocaEssaSenha2026"
+
+
+class RelogioDosLimitesParado:
+    """Fixa o relógio do django-ratelimit durante o teste.
+
+    Os limites contam por janela de relógio ("3/m" é por minuto do relógio).
+    Um teste que cruzasse a virada da janela veria a contagem zerar no meio e
+    falharia de vez em quando.
+    """
+
+    def setUp(self):
+        super().setUp()
+        relogio = patch("django_ratelimit.core.time")
+        relogio.start().time.return_value = 1_800_000_000.0
+        self.addCleanup(relogio.stop)
 
 
 def codigo_atual(device):
@@ -367,13 +382,101 @@ class CodigosDeReservaTests(TestCase):
         codigos_reserva.gerar_codigos(self.user)
         self.client.force_login(self.user)
 
-        self.client.post(reverse("accounts:otp_disable"))
+        self.client.post(
+            reverse("accounts:otp_disable"),
+            {"password": SENHA, "codigo": codigo_atual(self.device)},
+        )
 
         self.assertEqual(codigos_reserva.restantes(self.user), 0)
 
     def test_cadastro_de_codigos_estaticos_saiu_do_painel(self):
         # Pelo painel, alguém da equipe criaria um código para outra conta.
         self.assertFalse(admin.site.is_registered(StaticDevice))
+
+
+class ReautenticacaoTests(RelogioDosLimitesParado, TestCase):
+    """Risco R12: desligar o 2FA e excluir a conta pedem confirmação forte."""
+
+    def setUp(self):
+        super().setUp()
+        self.user = User.objects.create_user(
+            email="cuidadoso@exemplo.com", full_name="Pessoa Cuidadosa", password=SENHA
+        )
+        self.device = EncryptedTOTPDevice.objects.create(
+            user=self.user, name="celular", confirmed=True
+        )
+        ConsentRecord.registrar_aceite(self.user)
+        self.client.force_login(self.user)
+
+    def _desativar(self, **dados):
+        return self.client.post(reverse("accounts:otp_disable"), dados)
+
+    def _tem_2fa(self):
+        return EncryptedTOTPDevice.objects.filter(user=self.user).exists()
+
+    def test_desativar_sem_senha_nem_codigo_nao_desliga(self):
+        # Antes, um POST vazio na sessão aberta desligava o 2FA.
+        self._desativar()
+
+        self.assertTrue(self._tem_2fa())
+
+    def test_desativar_com_senha_mas_codigo_errado_nao_desliga(self):
+        resposta = self._desativar(password=SENHA, codigo="000000")
+
+        self.assertContains(resposta, "Senha ou código incorretos.")
+        self.assertTrue(self._tem_2fa())
+
+    def test_desativar_com_codigo_mas_senha_errada_nao_desliga(self):
+        self._desativar(password="outra senha", codigo=codigo_atual(self.device))
+
+        self.assertTrue(self._tem_2fa())
+
+    def test_desativar_com_senha_e_codigo_desliga(self):
+        resposta = self._desativar(password=SENHA, codigo=codigo_atual(self.device))
+
+        self.assertRedirects(resposta, reverse("accounts:profile"))
+        self.assertFalse(self._tem_2fa())
+
+    def test_codigo_de_reserva_tambem_confirma(self):
+        codigo = codigos_reserva.gerar_codigos(self.user)[0]
+
+        self._desativar(password=SENHA, codigo=codigo)
+
+        self.assertFalse(self._tem_2fa())
+
+    def test_equipe_nao_desativa_o_2fa(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
+
+        self._desativar(password=SENHA, codigo=codigo_atual(self.device))
+
+        self.assertTrue(self._tem_2fa())
+
+    def test_confirmacoes_erradas_de_desativacao_tem_limite(self):
+        for _ in range(5):
+            self._desativar(password=SENHA, codigo="000000")
+
+        resposta = self._desativar(password=SENHA, codigo=codigo_atual(self.device))
+
+        self.assertEqual(resposta.status_code, 429)
+        self.assertTrue(self._tem_2fa())
+
+    def test_exclusao_da_conta_tem_limite_de_senhas_erradas(self):
+        # Antes, dava para testar senhas na tela de exclusão sem parar.
+        for _ in range(5):
+            self.client.post(reverse("privacy:delete_account"), {"password": "chute"})
+
+        resposta = self.client.post(reverse("privacy:delete_account"), {"password": SENHA})
+
+        self.assertEqual(resposta.status_code, 429)
+        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+
+    def test_exclusao_com_a_senha_certa_continua_funcionando(self):
+        self.client.post(reverse("privacy:delete_account"), {"password": "chute"})
+
+        self.client.post(reverse("privacy:delete_account"), {"password": SENHA})
+
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
 
 
 class SessaoTests(TestCase):
@@ -513,7 +616,7 @@ class BloqueioProgressivoTests(TestCase):
         "recuperacao": {"por_ip": "3/m", "total": "100/m"},
     }
 )
-class LimiteDeRequisicoesTests(TestCase):
+class LimiteDeRequisicoesTests(RelogioDosLimitesParado, TestCase):
     """Risco R03: limite por endereço e no total nas telas caras."""
 
     def setUp(self):
@@ -583,6 +686,103 @@ class LimiteDeRequisicoesTests(TestCase):
                 )
 
         self.assertIn("x_forwarded_for=200.1.2.3", registro.output[0])
+
+
+class CadastroSemEnumeracaoTests(RelogioDosLimitesParado, TestCase):
+    """Risco R08: o cadastro não revela se o e-mail já tem conta."""
+
+    def setUp(self):
+        self.existente = User.objects.create_user(
+            email="ja.tenho@exemplo.com", full_name="Pessoa Antiga", password=SENHA
+        )
+        ConsentRecord.registrar_aceite(self.existente)
+        reset()
+
+    def _cadastrar(self, email):
+        return self.client.post(
+            reverse("accounts:register"),
+            {
+                "email": email,
+                "full_name": "Pessoa Nova",
+                "password1": SENHA,
+                "password2": SENHA,
+                "accept_privacy_policy": "on",
+            },
+        )
+
+    @patch("apps.accounts.views.enviar_aviso_de_conta_existente")
+    @patch("apps.accounts.views.enviar_link_de_confirmacao")
+    def test_resposta_e_igual_para_email_novo_e_ja_cadastrado(self, confirmacao, aviso):
+        # Antes, o e-mail repetido voltava ao formulário com "Ja existe uma
+        # conta com este e-mail".
+        novo = self._cadastrar("novo@exemplo.com")
+        repetido = self._cadastrar(self.existente.email)
+
+        self.assertRedirects(novo, reverse("accounts:register_sent"))
+        self.assertRedirects(repetido, reverse("accounts:register_sent"))
+        self.assertNotContains(self.client.get(repetido.url), "Ja existe")
+
+    @patch("apps.accounts.views.enviar_link_de_confirmacao")
+    def test_conta_nova_nasce_inativa_e_so_entra_depois_do_link(self, confirmacao):
+        self._cadastrar("novo@exemplo.com")
+        novo = User.objects.get(email="novo@exemplo.com")
+        self.assertFalse(novo.is_active)
+
+        self.client.post(
+            reverse("accounts:login"), {"username": novo.email, "password": SENHA}
+        )
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+        link = confirmacao.call_args.args[1]
+        resposta = self.client.get(link.replace(settings.APP_BASE_URL.rstrip("/"), ""))
+
+        self.assertRedirects(resposta, reverse("accounts:login"))
+        novo.refresh_from_db()
+        self.assertTrue(novo.is_active)
+
+    @patch("apps.accounts.views.enviar_link_de_confirmacao")
+    def test_link_de_confirmacao_vale_uma_vez(self, confirmacao):
+        self._cadastrar("novo@exemplo.com")
+        caminho = confirmacao.call_args.args[1].replace(settings.APP_BASE_URL.rstrip("/"), "")
+        self.client.get(caminho)
+
+        resposta = self.client.get(caminho)
+
+        self.assertRedirects(resposta, reverse("accounts:register"))
+
+    @patch("apps.accounts.views.enviar_link_de_confirmacao")
+    def test_link_vencido_nao_ativa(self, confirmacao):
+        self._cadastrar("novo@exemplo.com")
+        EmailConfirmationToken.objects.update(expires_at=timezone.now() - timedelta(minutes=1))
+
+        self.client.get(confirmacao.call_args.args[1].replace(settings.APP_BASE_URL.rstrip("/"), ""))
+
+        self.assertFalse(User.objects.get(email="novo@exemplo.com").is_active)
+
+    @patch("apps.accounts.views.enviar_aviso_de_conta_existente")
+    def test_email_ja_cadastrado_nao_cria_conta_e_avisa_o_dono(self, aviso):
+        self._cadastrar(self.existente.email)
+        self._cadastrar(self.existente.email)
+
+        self.assertEqual(User.objects.filter(email__iexact=self.existente.email).count(), 1)
+        # Um aviso por hora: o formulário não serve para lotar a caixa de alguém.
+        aviso.assert_called_once()
+        self.assertEqual(aviso.call_args.args[0], self.existente)
+
+    @patch("apps.accounts.views.enviar_link_de_confirmacao")
+    def test_conta_nunca_confirmada_recebe_link_novo(self, confirmacao):
+        self._cadastrar("novo@exemplo.com")
+        self._cadastrar("novo@exemplo.com")
+
+        self.assertEqual(confirmacao.call_count, 2)
+        self.assertEqual(User.objects.filter(email="novo@exemplo.com").count(), 1)
+        self.assertEqual(EmailConfirmationToken.objects.count(), 1)
+
+    @patch("apps.accounts.views.enviar_link_de_confirmacao", side_effect=FalhaNoEnvio("fora do ar"))
+    def test_falha_no_envio_nao_muda_a_resposta(self, confirmacao):
+        resposta = self._cadastrar("novo@exemplo.com")
+
+        self.assertRedirects(resposta, reverse("accounts:register_sent"))
 
 
 class CadastroTests(TestCase):
@@ -660,9 +860,64 @@ class RecuperacaoDeSenhaTests(TestCase):
 
     # --- 2.1 fluxo completo -------------------------------------------------
 
+    def trocar_senha(self, link, dados):
+        """Abre o link do e-mail e envia a senha nova na tela sem o token.
+
+        Se o link for recusado, devolve a resposta de recusa, como faria o
+        navegador de quem clicou.
+        """
+        resposta = self.client.get(link)
+        if resposta.status_code != 302:
+            return resposta
+        return self.client.post(reverse("accounts:password_reset_new"), dados)
+
+    def test_link_tira_o_token_da_url_antes_do_formulario(self):
+        # Risco R13. Antes, o formulário ficava no endereço com o token, que
+        # ia para o histórico e para o Referer.
+        _, link = self.pedir_link()
+        token = link.rstrip("/").rsplit("/", 1)[-1]
+
+        resposta = self.client.get(link)
+
+        self.assertRedirects(resposta, reverse("accounts:password_reset_new"))
+        self.assertNotIn(token, resposta["Location"])
+        # A sessão guarda o identificador do registro, não o token.
+        self.assertNotIn(token, str(dict(self.client.session)))
+        formulario = self.client.get(reverse("accounts:password_reset_new"))
+        self.assertContains(formulario, "new_password1")
+        self.assertIn("no-store", formulario["Cache-Control"])
+
+    def test_tela_da_senha_nova_sem_passar_pelo_link_e_recusada(self):
+        resposta = self.client.get(reverse("accounts:password_reset_new"))
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertNotContains(resposta, "new_password1", status_code=400)
+
+    def test_token_que_vence_com_a_tela_aberta_nao_troca_a_senha(self):
+        _, link = self.pedir_link()
+        self.client.get(link)
+        PasswordResetToken.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
+
+        resposta = self.client.post(
+            reverse("accounts:password_reset_new"),
+            {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA},
+        )
+
+        self.assertEqual(resposta.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(SENHA))
+
+    def test_depois_da_troca_a_tela_nao_abre_de_novo(self):
+        _, link = self.pedir_link()
+        self.trocar_senha(link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA})
+
+        resposta = self.client.get(reverse("accounts:password_reset_new"))
+
+        self.assertEqual(resposta.status_code, 400)
+
     def test_fluxo_completo_troca_a_senha(self):
         _, link = self.pedir_link()
-        self.client.post(
+        self.trocar_senha(
             link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
         )
 
@@ -672,7 +927,7 @@ class RecuperacaoDeSenhaTests(TestCase):
 
     def test_senha_redefinida_continua_em_argon2id(self):
         _, link = self.pedir_link()
-        self.client.post(
+        self.trocar_senha(
             link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
         )
 
@@ -683,7 +938,7 @@ class RecuperacaoDeSenhaTests(TestCase):
 
     def test_senha_nova_fraca_e_recusada(self):
         _, link = self.pedir_link()
-        self.client.post(link, {"new_password1": "123456", "new_password2": "123456"})
+        self.trocar_senha(link, {"new_password1": "123456", "new_password2": "123456"})
 
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password(SENHA))
@@ -737,7 +992,7 @@ class RecuperacaoDeSenhaTests(TestCase):
 
     def test_token_e_marcado_como_usado(self):
         _, link = self.pedir_link()
-        self.client.post(
+        self.trocar_senha(
             link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
         )
 
@@ -746,12 +1001,12 @@ class RecuperacaoDeSenhaTests(TestCase):
 
     def test_mesmo_link_nao_serve_duas_vezes(self):
         _, link = self.pedir_link()
-        self.client.post(
+        self.trocar_senha(
             link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
         )
 
         terceira = "TerceiraSenhaBoa2026"
-        resposta = self.client.post(
+        resposta = self.trocar_senha(
             link, {"new_password1": terceira, "new_password2": terceira}
         )
 
@@ -764,7 +1019,7 @@ class RecuperacaoDeSenhaTests(TestCase):
         _, primeiro_link = self.pedir_link()
         self.pedir_link()
 
-        resposta = self.client.post(
+        resposta = self.trocar_senha(
             primeiro_link,
             {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA},
         )
@@ -782,7 +1037,7 @@ class RecuperacaoDeSenhaTests(TestCase):
             expires_at=timezone.now() - timedelta(minutes=1)
         )
 
-        resposta = self.client.post(
+        resposta = self.trocar_senha(
             link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
         )
 
@@ -835,7 +1090,7 @@ class RecuperacaoDeSenhaTests(TestCase):
 
     def test_sucesso_do_processo_fica_registrado(self):
         _, link = self.pedir_link()
-        self.client.post(
+        self.trocar_senha(
             link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
         )
 
@@ -903,10 +1158,10 @@ class RecuperacaoDeSenhaTests(TestCase):
         self.client.get(
             reverse("accounts:password_reset_confirm", args=["token-inventado"])
         )
-        self.client.post(
+        self.trocar_senha(
             link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
         )
-        self.client.post(
+        self.trocar_senha(
             link, {"new_password1": self.SENHA_NOVA, "new_password2": self.SENHA_NOVA}
         )
 

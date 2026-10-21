@@ -183,15 +183,22 @@ class PasswordResetToken(models.Model):
 
         if registro is None:
             return None, cls.SITUACAO_INEXISTENTE
-        if registro.used_at is not None:
-            return registro, cls.SITUACAO_JA_USADO
+        return registro, registro.situacao()
+
+    def situacao(self):
+        """Situação deste token agora. Usada também depois que o link foi
+        aberto e o token saiu da URL (risco R13): a tela da senha nova volta a
+        conferir o registro, porque o prazo pode vencer enquanto ela está
+        aberta."""
+        if self.used_at is not None:
+            return self.SITUACAO_JA_USADO
         # Um token cancelado por um pedido mais novo responde como inexistente:
         # para quem clicou, o link simplesmente não vale mais.
-        if registro.invalidated_at is not None:
-            return registro, cls.SITUACAO_INEXISTENTE
-        if registro.expires_at <= timezone.now():
-            return registro, cls.SITUACAO_EXPIRADO
-        return registro, cls.SITUACAO_VALIDO
+        if self.invalidated_at is not None:
+            return self.SITUACAO_INEXISTENTE
+        if self.expires_at <= timezone.now():
+            return self.SITUACAO_EXPIRADO
+        return self.SITUACAO_VALIDO
 
     def marcar_como_usado(self):
         """Gasta o token e cancela os demais tokens pendentes da mesma conta."""
@@ -202,6 +209,70 @@ class PasswordResetToken(models.Model):
         PasswordResetToken.objects.filter(
             user=self.user, used_at__isnull=True, invalidated_at__isnull=True
         ).update(invalidated_at=agora)
+
+
+class EmailConfirmationToken(models.Model):
+    """Link de confirmação do e-mail, enviado no cadastro (risco R08).
+
+    A conta nasce inativa e só passa a entrar depois do clique. Com isso o
+    cadastro pode responder igual para e-mail novo e já cadastrado: quem
+    tenta descobrir se um endereço tem conta não vê diferença, e só o dono da
+    caixa de entrada consegue ativar a conta. Segue o PasswordResetToken: o
+    banco guarda só o SHA-256 do token, que nasce com 256 bits aleatórios.
+    """
+
+    TAMANHO_EM_BYTES = 32
+
+    user = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="email_confirmation_tokens",
+        verbose_name="usuario",
+    )
+    token_hash = models.CharField("hash do token", max_length=64, unique=True)
+    created_at = models.DateTimeField("criado em", auto_now_add=True)
+    expires_at = models.DateTimeField("expira em")
+
+    class Meta:
+        verbose_name = "token de confirmacao de e-mail"
+        verbose_name_plural = "tokens de confirmacao de e-mail"
+
+    @classmethod
+    def emitir(cls, user):
+        """Cria o token e devolve o valor puro, que só existe nesta chamada.
+
+        Os tokens anteriores da conta são apagados: vale só o link mais novo.
+        """
+        cls.objects.filter(user=user).delete()
+        token_puro = secrets.token_urlsafe(cls.TAMANHO_EM_BYTES)
+        cls.objects.create(
+            user=user,
+            token_hash=PasswordResetToken.calcular_hash(token_puro),
+            expires_at=timezone.now() + settings.EMAIL_CONFIRMATION_TIMEOUT,
+        )
+        return token_puro
+
+    @classmethod
+    def consumir(cls, token_puro):
+        """Ativa a conta do token, se ele valer, e apaga o token. Devolve a
+        conta ativada, ou None para token inexistente, usado ou vencido."""
+        registro = (
+            cls.objects.select_related("user")
+            .filter(token_hash=PasswordResetToken.calcular_hash(token_puro))
+            .first()
+        )
+        if registro is None:
+            return None
+
+        user = registro.user
+        valido = registro.expires_at > timezone.now()
+        registro.delete()
+        if not valido:
+            return None
+
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+        return user
 
 
 """Segredo do 2FA cifrado em repouso (requisitos 3.4 e 3.5)."""

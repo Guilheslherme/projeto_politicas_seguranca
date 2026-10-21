@@ -1,5 +1,6 @@
 import base64
 import io
+import logging
 from datetime import datetime
 
 import qrcode
@@ -9,6 +10,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.views import LoginView, LogoutView
 from django.db import transaction
 from django.shortcuts import redirect, render
@@ -17,6 +19,7 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django_otp import login as otp_login
+from django_ratelimit.core import is_ratelimited
 
 from apps.audit.models import AuthEvent, PasswordResetLog
 
@@ -27,10 +30,16 @@ from apps.audit.signals import registrar_evento
 from apps.privacy.models import ConsentRecord
 
 from . import codigos_reserva
-from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
-from .limites import limitar
+from .emails import (
+    FalhaNoEnvio,
+    enviar_aviso_de_conta_existente,
+    enviar_link_de_confirmacao,
+    enviar_link_de_recuperacao,
+)
+from .limites import confirmacao_bloqueada, limitar, registrar_confirmacao_errada
 from .forms import (
     CodigoReservaForm,
+    DesativarDoisFatoresForm,
     EmailAuthenticationForm,
     NewPasswordForm,
     OTPTokenForm,
@@ -39,7 +48,9 @@ from .forms import (
 )
 # EncryptedTOTPDevice no lugar do TOTPDevice do django-otp: mesma tabela, mas
 # o segredo do autenticador sai cifrado com AES-256-GCM (requisito 3.4).
-from .models import EncryptedTOTPDevice, PasswordResetToken, User
+from .models import EmailConfirmationToken, EncryptedTOTPDevice, PasswordResetToken, User
+
+logger = logging.getLogger(__name__)
 
 #nesta pagina que acontece o 2FA com TOTP, cadastro, a ativação e desativação dos 2 fatores e mostra o perfil do usuario.
 PENDING_USER_KEY = "pre_2fa_user_id"
@@ -74,24 +85,92 @@ def _build_qr_data_uri(config_url):
 
 @limitar("cadastro")
 def register_view(request):
+    """Cadastro que responde igual para e-mail novo ou já cadastrado (R08).
+
+    Nos dois casos a pessoa vai para a mesma tela, "confira seu e-mail". Com
+    e-mail novo, a conta nasce inativa e recebe o link de confirmação. Com
+    e-mail que já tem conta, nada é criado, e o dono do endereço recebe um
+    aviso. Só quem abre a caixa de entrada descobre qual dos dois aconteceu.
+    """
     form = RegistrationForm(request.POST or None)
 
     if request.method == "POST" and form.is_valid():
-        # A conta e o registro do aceite nascem juntos. Se a gravação do aceite
-        # falhar, a conta também não é criada: não existe conta sem a prova do
-        # consentimento que a autorizou (requisito 4.4).
-        with transaction.atomic():
-            user = form.save()
-            ConsentRecord.registrar_aceite(user)
+        existente = User.objects.filter(email__iexact=form.cleaned_data["email"]).first()
 
-        # Fora da transação, de propósito: o evento diz que a conta foi criada,
-        # então só deve existir depois que a criação foi mesmo confirmada.
-        registrar_evento(request, AuthEvent.Event.CADASTRO, user=user)
+        if existente is None:
+            # A conta e o registro do aceite nascem juntos. Se a gravação do
+            # aceite falhar, a conta também não é criada: não existe conta sem
+            # a prova do consentimento que a autorizou (requisito 4.4).
+            with transaction.atomic():
+                user = form.save(commit=False)
+                user.is_active = False
+                user.save()
+                ConsentRecord.registrar_aceite(user)
 
-        messages.success(request, "Conta criada com sucesso. Faça login para continuar.")
-        return redirect("accounts:login")
+            # Fora da transação, de propósito: o evento diz que a conta foi
+            # criada, então só deve existir depois que a criação foi confirmada.
+            registrar_evento(request, AuthEvent.Event.CADASTRO, user=user)
+            _enviar_confirmacao(user)
+        else:
+            # O cadastro novo calcula um Argon2id ao gravar a senha. Calcular
+            # um aqui também evita que o tempo de resposta denuncie o caso.
+            make_password(form.cleaned_data["password1"])
+            _tratar_cadastro_repetido(request, existente)
+
+        return redirect("accounts:register_sent")
 
     return render(request, "accounts/register.html", {"form": form})
+
+
+def _enviar_confirmacao(user):
+    token_puro = EmailConfirmationToken.emitir(user)
+    link = settings.APP_BASE_URL.rstrip("/") + reverse(
+        "accounts:confirm_email", args=[token_puro]
+    )
+    try:
+        enviar_link_de_confirmacao(user, link)
+    except FalhaNoEnvio as erro:
+        # A tela não muda: avisar a falha só para e-mail novo revelaria o caso.
+        # Quem não recebeu pode se cadastrar de novo, e um link novo é enviado.
+        logger.warning("Falha ao enviar a confirmacao de e-mail da conta %s: %s", user.pk, erro)
+
+
+def _tratar_cadastro_repetido(request, existente):
+    if not existente.is_active:
+        # Conta que nunca foi confirmada: manda um link novo. Conta desativada
+        # depois de usada (já tem last_login) continua como está.
+        if existente.last_login is None:
+            _enviar_confirmacao(existente)
+        return
+
+    # Um aviso por hora por conta, para o formulário não virar uma forma de
+    # lotar a caixa de entrada de alguém.
+    if is_ratelimited(
+        request, group="cadastro:aviso", key=lambda grupo, req: str(existente.pk),
+        rate="1/h", method="POST", increment=True,
+    ):
+        return
+
+    link = settings.APP_BASE_URL.rstrip("/") + reverse("accounts:password_reset")
+    try:
+        enviar_aviso_de_conta_existente(existente, link)
+    except FalhaNoEnvio as erro:
+        logger.warning("Falha ao enviar aviso de cadastro repetido da conta %s: %s", existente.pk, erro)
+
+
+def confirm_email(request, token):
+    """Ativa a conta pelo link do e-mail. O token vale uma vez só."""
+    user = EmailConfirmationToken.consumir(token)
+    if user is None:
+        messages.error(
+            request,
+            "Este link de confirmação não vale mais. Cadastre-se de novo com o "
+            "mesmo e-mail para receber um link novo.",
+        )
+        return redirect("accounts:register")
+
+    messages.success(request, "E-mail confirmado. Agora você já pode entrar.")
+    return redirect("accounts:login")
 
 
 @method_decorator(limitar("login"), name="dispatch")
@@ -298,8 +377,32 @@ def codigos_reserva_novos(request):
 
 
 @login_required
+@never_cache
 def otp_disable(request):
+    """Desliga o 2FA só com a senha e um código válidos (risco R12)."""
+    if not EncryptedTOTPDevice.objects.filter(user=request.user, confirmed=True).exists():
+        return redirect("accounts:profile")
+
+    if request.user.is_staff:
+        # Conta da equipe sem 2FA não entra (R05): desligar aqui trancaria a
+        # pessoa do lado de fora no próximo login.
+        messages.error(request, "Contas da equipe não podem desativar a verificação em duas etapas.")
+        return redirect("accounts:profile")
+
+    if confirmacao_bloqueada(request, "desativar_2fa"):
+        return render(request, "accounts/limite_excedido.html", status=429)
+
+    form = DesativarDoisFatoresForm(request.user, request.POST or None)
+
     if request.method == "POST":
+        if not form.is_valid():
+            registrar_confirmacao_errada(request, "desativar_2fa")
+            registrar_evento(
+                request, AuthEvent.Event.OTP_FALHOU, user=request.user,
+                detail="confirmacao para desativar o 2FA",
+            )
+            return render(request, "accounts/otp_disable.html", {"form": form})
+
         EncryptedTOTPDevice.objects.filter(user=request.user).delete()
         codigos_reserva.apagar_codigos(request.user)
         request.user.two_factor_enabled = False
@@ -311,7 +414,9 @@ def otp_disable(request):
         registrar_evento(request, AuthEvent.Event.OTP_DESATIVADO, user=request.user)
 
         messages.warning(request, "Verificação em duas etapas desativada.")
-    return redirect("accounts:profile")
+        return redirect("accounts:profile")
+
+    return render(request, "accounts/otp_disable.html", {"form": form})
 
 
 @login_required
@@ -444,10 +549,43 @@ def password_reset_request(request):
     return render(request, "accounts/password_reset_request.html", {"form": form})
 
 
-def password_reset_confirm(request, token):
-    """Etapa 2: o link é conferido e a senha nova é definida."""
-    registro, situacao = PasswordResetToken.resolver(token)
+SESSAO_TOKEN_DE_RECUPERACAO = "recuperacao_token_id"
 
+
+def password_reset_confirm(request, token):
+    """Etapa 2a: o link do e-mail é conferido e o token sai da URL (R13).
+
+    Com o token no endereço, ele ficava no histórico do navegador e seguia no
+    cabeçalho Referer de qualquer recurso pedido pela página do formulário.
+    Agora esta rota só confere o link, guarda na sessão o identificador do
+    registro (não o token) e redireciona para um endereço sem ele.
+    """
+    registro, situacao = PasswordResetToken.resolver(token)
+    resposta_de_falha = _recusar_token(request, registro, situacao)
+    if resposta_de_falha is not None:
+        return resposta_de_falha
+
+    request.session[SESSAO_TOKEN_DE_RECUPERACAO] = registro.pk
+    return redirect("accounts:password_reset_new")
+
+
+@never_cache
+def password_reset_new(request):
+    """Etapa 2b: a senha nova é definida, num endereço sem o token."""
+    registro = PasswordResetToken.objects.select_related("user").filter(
+        pk=request.session.get(SESSAO_TOKEN_DE_RECUPERACAO)
+    ).first()
+    situacao = registro.situacao() if registro else PasswordResetToken.SITUACAO_INEXISTENTE
+    resposta_de_falha = _recusar_token(request, registro, situacao)
+    if resposta_de_falha is not None:
+        request.session.pop(SESSAO_TOKEN_DE_RECUPERACAO, None)
+        return resposta_de_falha
+
+    return _definir_senha_nova(request, registro)
+
+
+def _recusar_token(request, registro, situacao):
+    """Resposta para token recusado, ou None se ele vale."""
     if situacao != PasswordResetToken.SITUACAO_VALIDO:
         evento, mensagem = FALHAS_DO_TOKEN[situacao]
         # O token recusado não entra no log: registrar o valor do link daria a
@@ -464,7 +602,10 @@ def password_reset_confirm(request, token):
             {"mensagem": mensagem},
             status=400,
         )
+    return None
 
+
+def _definir_senha_nova(request, registro):
     form = NewPasswordForm(registro.user, request.POST or None)
 
     if request.method == "POST" and form.is_valid():
@@ -486,6 +627,7 @@ def password_reset_confirm(request, token):
         PasswordResetLog.registrar(
             request, PasswordResetLog.Event.SENHA_REDEFINIDA, registro.user
         )
+        request.session.pop(SESSAO_TOKEN_DE_RECUPERACAO, None)
         return redirect("accounts:password_reset_done")
 
     return render(request, "accounts/password_reset_confirm.html", {"form": form})

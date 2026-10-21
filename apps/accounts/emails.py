@@ -101,3 +101,38 @@ def enviar_link_de_recuperacao(user, link):
         return
 
     _enviar(user.email, assunto, conteudo_texto, conteudo_html)
+
+
+def _entregar(user, assunto, modelo, contexto, link=None):
+    """Mesma regra do envio acima, para as mensagens do cadastro (R08)."""
+    conteudo_texto = render_to_string(f"emails/{modelo}.txt", contexto)
+    conteudo_html = render_to_string(f"emails/{modelo}.html", contexto)
+
+    if not settings.BREVO_API_KEY:
+        if not settings.DEBUG:
+            raise FalhaNoEnvio("BREVO_API_KEY nao configurada")
+        logger.warning("BREVO_API_KEY ausente. Mensagem %s nao enviada. Link: %s", modelo, link)
+        return
+
+    _enviar(user.email, assunto, conteudo_texto, conteudo_html)
+
+
+def enviar_link_de_confirmacao(user, link):
+    """Envia o link que ativa a conta recém-criada."""
+    contexto = {
+        "nome": user.get_short_name(),
+        "link": link,
+        "horas": int(settings.EMAIL_CONFIRMATION_TIMEOUT.total_seconds() // 3600),
+    }
+    _entregar(user, "Confirme seu e-mail - Health In Sight", "confirmacao_email", contexto, link)
+
+
+def enviar_aviso_de_conta_existente(user, link_de_recuperacao):
+    """Avisa o dono do e-mail que alguém tentou cadastrá-lo de novo.
+
+    É a mensagem que, antes, aparecia na tela do cadastro para qualquer um
+    ("Já existe uma conta com este e-mail"). Agora só o dono da caixa de
+    entrada fica sabendo.
+    """
+    contexto = {"nome": user.get_short_name(), "link": link_de_recuperacao}
+    _entregar(user, "Tentativa de cadastro - Health In Sight", "conta_existente", contexto)

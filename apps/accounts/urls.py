@@ -14,6 +14,12 @@ MINUTOS_DO_LINK = int(settings.PASSWORD_RESET_TOKEN_TIMEOUT.total_seconds() // 6
 
 urlpatterns = [
     path('register/', views.register_view, name='register'),
+    path(
+        "register/enviado/",
+        TemplateView.as_view(template_name="accounts/register_sent.html"),
+        name="register_sent",
+    ),
+    path("confirmar/<str:token>/", views.confirm_email, name="confirm_email"),
     path("entrar/", views.TwoFactorLoginView.as_view(), name="login"),
     path("sair/", views.SecureLogoutView.as_view(), name="logout"),
     path("perfil/", views.profile, name="profile"),
@@ -39,6 +45,9 @@ urlpatterns = [
         TemplateView.as_view(template_name="accounts/password_reset_done.html"),
         name="password_reset_done",
     ),
+    # Também antes do token, pelo mesmo motivo. É aqui que fica o formulário
+    # da senha nova, num endereço sem o token (risco R13).
+    path("recuperar/nova-senha/", views.password_reset_new, name="password_reset_new"),
     path(
         "recuperar/<str:token>/",
         views.password_reset_confirm,

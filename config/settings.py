@@ -372,10 +372,21 @@ PASSWORD_RESET_TOKEN_TIMEOUT = timedelta(minutes=30)
 PASSWORD_RESET_MAX_REQUESTS = 3
 PASSWORD_RESET_REQUEST_WINDOW = timedelta(minutes=15)
 
+# Validade do link de confirmação do e-mail enviado no cadastro (risco R08).
+# Mais longa que a do link de senha: a conta ainda não tem nada a proteger, e
+# um prazo curto deixaria muita gente sem conseguir concluir o cadastro.
+EMAIL_CONFIRMATION_TIMEOUT = timedelta(hours=24)
+
 # Envio pela API HTTP do Brevo. A chave fica em variável de ambiente, fora do
 # repositório: se estivesse no código, qualquer pessoa com acesso ao histórico
 # do Git poderia enviar mensagens em nome do projeto.
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+
+# Nos testes, nenhum e-mail sai de verdade, mesmo com a chave no .env. Os
+# testes que exercitam a chamada ao Brevo definem uma chave falsa e simulam a
+# resposta.
+if "test" in sys.argv:
+    BREVO_API_KEY = ""
 BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "")
 BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "Health In Sight")
 
