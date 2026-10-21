@@ -100,7 +100,7 @@ Cada senha recebe um salt aleatório próprio. Duas pessoas com a mesma senha fi
 
 **Sessão.** Expira em 15 minutos parados. Quem está usando não é desconectado, porque o prazo reinicia a cada página aberta. Fechar o navegador também encerra. No logout a sessão é apagada do banco, não só esquecida pelo navegador, então um cookie copiado antes não serve para nada depois.
 
-**Tentativas de invasão.** Depois de 5 senhas erradas, aquela combinação de conta e endereço fica bloqueada por 5 minutos. O bloqueio é da combinação, e não só do e-mail, senão qualquer pessoa poderia travar a conta de outra de propósito.
+**Tentativas de invasão.** Depois de 5 senhas erradas, aquela combinação de conta e endereço fica bloqueada por 5 minutos, e o tempo dobra a cada novo bloqueio no mesmo dia. O bloqueio é da combinação, e não só do e-mail, senão qualquer pessoa poderia travar a conta de outra de propósito. Além disso, o login, o código do 2FA, o cadastro e a recuperação de senha têm limite de envios por endereço e no total.
 
 **Recuperação de senha.** O link enviado por e-mail carrega um token de 256 bits sorteado pelo gerador criptográfico do sistema. No banco fica apenas o SHA-256 dele, nunca o valor do link. Vale 30 minutos, serve uma vez só, e pedir um link novo cancela os anteriores.
 
@@ -125,7 +125,7 @@ Pelo menu "Meus dados", quem tem conta pode:
 
 Cadastro, login, logout, verificação em duas etapas com QR Code, bloqueio por tentativas, recuperação de senha por e-mail, as telas de exercício dos direitos da LGPD, a trilha de auditoria encadeada, o filtro de sintomas com o desvio de alerta, as páginas de condição e o guardar material com consentimento por finalidade.
 
-São **92 testes automatizados**. Para rodar todos:
+São **146 testes automatizados**. Para rodar todos:
 
 ```bash
 python manage.py test apps
