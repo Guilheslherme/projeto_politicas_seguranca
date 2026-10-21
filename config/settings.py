@@ -292,7 +292,13 @@ else:
 # Proteção contra força bruta (requisito 1.11)
 # ---------------------------------------------------------------------------
 AXES_FAILURE_LIMIT = 5
-AXES_COOLOFF_TIME = timedelta(minutes=5)
+
+# Bloqueio progressivo (risco R03): 5 minutos no primeiro bloqueio, dobrando a
+# cada repetição da mesma conta e endereço no mesmo dia, até 24 horas. Cada
+# tentativa guarda o próprio prazo de expiração; sem isso, a limpeza feita
+# para um usuário com bloqueio curto apagaria o bloqueio longo de outro.
+AXES_COOLOFF_TIME = "apps.accounts.limites.tempo_de_bloqueio"
+AXES_USE_ATTEMPT_EXPIRATION = True
 
 # A lista dentro da lista bloqueia a combinação de e-mail e endereço de rede.
 # Bloquear só pelo e-mail permitiria travar a conta de qualquer pessoa de
@@ -311,6 +317,42 @@ AXES_USERNAME_FORM_FIELD = "username"
 
 AXES_RESET_ON_SUCCESS = True
 AXES_LOCKOUT_TEMPLATE = "accounts/lockout.html"
+
+
+# ---------------------------------------------------------------------------
+# Limite de requisições por endereço e no total (risco R03)
+# ---------------------------------------------------------------------------
+
+# Envios de formulário aceitos por janela, em cada tela que custa caro ao
+# servidor (Argon2id de 64 MiB) ou que dispara e-mail. "por_ip" segura um
+# endereço sozinho; "total" segura muitos endereços ao mesmo tempo.
+LIMITES_DE_REQUISICAO = {
+    "login": {"por_ip": "10/m", "total": "120/m"},
+    "otp": {"por_ip": "10/m", "total": "120/m"},
+    "cadastro": {"por_ip": "5/h", "total": "60/h"},
+    "recuperacao": {"por_ip": "5/h", "total": "60/h"},
+}
+
+# A contagem precisa ser a mesma para todos os workers do Gunicorn, então fica
+# num cache em banco. A tabela é criada pela migração 0005 do accounts.
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "limites": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "cache_limites",
+    },
+}
+RATELIMIT_USE_CACHE = "limites"
+
+# O django-ratelimit avisa que o cache em banco não incrementa de forma
+# atômica: dois workers somando ao mesmo tempo podem perder uma contagem, e
+# passa uma tentativa a mais. Para um limite de taxa isso é aceitável, e o
+# plano gratuito não tem Redis nem Memcached.
+SILENCED_SYSTEM_CHECKS = ["django_ratelimit.E003", "django_ratelimit.W001"]
+
+# Diagnóstico temporário do endereço do cliente atrás do proxy do Render (veja
+# apps/accounts/limites.py). Grava IPs no log: ligar só durante a conferência.
+DIAGNOSTICO_PROXY = os.environ.get("DIAGNOSTICO_PROXY", "0") == "1"
 
 
 # ---------------------------------------------------------------------------

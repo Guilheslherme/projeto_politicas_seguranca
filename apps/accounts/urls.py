@@ -20,6 +20,7 @@ urlpatterns = [
     path("verificacao/", views.otp_verify, name="otp_verify"),
     path("verificacao/ativar/", views.otp_setup, name="otp_setup"),
     path("verificacao/desativar/", views.otp_disable, name="otp_disable"),
+    path("verificacao/codigos/", views.codigos_reserva_novos, name="codigos_reserva_novos"),
 
     # Recuperação de senha (requisito 2). As duas telas de aviso vêm antes da
     # rota do token: o Django testa os padrões na ordem, e "<str:token>"

@@ -24,5 +24,9 @@
     {{ form.token.errors }}
     <button type="submit" class="btn-primary block">Confirmar e ativar</button>
   </form>
+
+  {% if not user.is_staff %}
+    <p class="small"><a href="{% url 'accounts:profile' %}">Agora não</a></p>
+  {% endif %}
 </div>
 {% endblock %}

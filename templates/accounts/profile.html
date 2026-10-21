@@ -12,6 +12,11 @@
   </dl>
 
   {% if has_2fa %}
+    <p class="muted small">Códigos de reserva restantes: {{ codigos_restantes }}</p>
+    <form method="post" action="{% url 'accounts:codigos_reserva_novos' %}">
+      {% csrf_token %}
+      <button type="submit">Gerar novos códigos de reserva</button>
+    </form>
     <form method="post" action="{% url 'accounts:otp_disable' %}">
       {% csrf_token %}
       <button type="submit" class="btn-danger">Desativar 2FA</button>

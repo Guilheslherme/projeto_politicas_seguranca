@@ -1,4 +1,5 @@
 import importlib
+import io
 import os
 import time
 import urllib.error
@@ -12,16 +13,20 @@ from django.contrib.sessions.models import Session
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django_otp.admin import OTPAdminSite
 from django_otp.oath import TOTP
+from django_otp.plugins.otp_static.models import StaticDevice, StaticToken
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
-from axes.models import AccessAttempt
+from axes.models import AccessAttempt, AccessAttemptExpiration
 from axes.utils import reset
 
-from apps.audit.models import PasswordResetLog
+from apps.audit.models import AuthEvent, PasswordResetLog
 from apps.privacy.models import ConsentRecord
 
+from . import codigos_reserva
 from .crypto import FalhaNaDecifragem, cifrar, decifrar
 from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
 from .models import EncryptedTOTPDevice, PasswordResetToken
@@ -188,19 +193,187 @@ class PainelAdministrativoTests(TestCase):
 
         self.assertEqual(resposta.status_code, 200)
 
-    def test_equipe_sem_2fa_ativo_e_levada_ao_perfil(self):
+    def test_equipe_sem_2fa_ativo_nao_abre_o_admin(self):
+        # Desde a C3 (R05), quem é da equipe sem 2FA nem chega a entrar.
         self.device.delete()
         self._entrar(com_codigo=False)
 
-        resposta = self.client.get(reverse("admin:index"), follow=True)
+        resposta = self.client.get(reverse("admin:index"))
 
-        self.assertRedirects(resposta, reverse("accounts:profile"))
-        self.assertContains(resposta, "exige a verificação em duas etapas")
+        self.assertNotEqual(resposta.status_code, 200)
+        self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_cadastro_de_dispositivos_do_django_otp_saiu_do_painel(self):
         # Ele gravaria o segredo em texto puro, fora do EncryptedTOTPDevice.
         self.assertIsInstance(admin.site, OTPAdminSite)
         self.assertFalse(admin.site.is_registered(TOTPDevice))
+
+
+class DoisFatoresDaEquipeTests(TestCase):
+    """Risco R05: 2FA obrigatório para a equipe e convite para os demais."""
+
+    def setUp(self):
+        self.comum = User.objects.create_user(
+            email="comum@exemplo.com", full_name="Pessoa Comum", password=SENHA
+        )
+        self.equipe = User.objects.create_user(
+            email="membro@exemplo.com", full_name="Membro Da Equipe", password=SENHA,
+            is_staff=True,
+        )
+        for user in (self.comum, self.equipe):
+            ConsentRecord.registrar_aceite(user)
+        reset()
+
+    def _login(self, user):
+        return self.client.post(
+            reverse("accounts:login"), {"username": user.email, "password": SENHA}
+        )
+
+    def test_equipe_sem_2fa_nao_entra(self):
+        # Antes, a senha bastava, e quem a tivesse podia ativar o 2FA no
+        # próprio celular e abrir o painel.
+        resposta = self._login(self.equipe)
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertContains(resposta, "só entram com a verificação em duas etapas")
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertTrue(
+            AuthEvent.objects.filter(
+                event=AuthEvent.Event.LOGIN_FALHOU, user=self.equipe
+            ).exists()
+        )
+
+    def test_primeiro_login_sem_2fa_leva_ao_convite(self):
+        resposta = self._login(self.comum)
+
+        self.assertRedirects(resposta, reverse("accounts:otp_setup"))
+
+    def test_logins_seguintes_sem_2fa_vao_ao_perfil(self):
+        self._login(self.comum)
+        self.client.post(reverse("accounts:logout"))
+
+        resposta = self._login(self.comum)
+
+        self.assertRedirects(resposta, reverse("accounts:profile"))
+
+    def test_promover_equipe_exige_2fa_ativo(self):
+        with self.assertRaises(CommandError):
+            call_command("promover_equipe", self.comum.email, stdout=io.StringIO())
+        self.comum.refresh_from_db()
+        self.assertFalse(self.comum.is_staff)
+
+        EncryptedTOTPDevice.objects.create(user=self.comum, name="celular", confirmed=True)
+        call_command("promover_equipe", self.comum.email, stdout=io.StringIO())
+
+        self.comum.refresh_from_db()
+        self.assertTrue(self.comum.is_staff)
+        self.assertFalse(self.comum.is_superuser)
+
+
+class CodigosDeReservaTests(TestCase):
+    """Risco R05: códigos de reserva para quem perdeu o celular."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="reserva@exemplo.com", full_name="Pessoa Precavida", password=SENHA
+        )
+        self.device = EncryptedTOTPDevice.objects.create(
+            user=self.user, name="celular", confirmed=True
+        )
+        ConsentRecord.registrar_aceite(self.user)
+        reset()
+
+    def _senha(self):
+        self.client.post(
+            reverse("accounts:login"), {"username": self.user.email, "password": SENHA}
+        )
+
+    def _entrar_com_reserva(self, codigo):
+        self._senha()
+        return self.client.post(reverse("accounts:otp_verify"), {"codigo_reserva": codigo})
+
+    def test_ativar_o_2fa_mostra_dez_codigos_que_nao_ficam_legiveis_no_banco(self):
+        self.device.delete()
+        self.client.force_login(self.user)
+        self.client.get(reverse("accounts:otp_setup"))
+        pendente = EncryptedTOTPDevice.objects.get(user=self.user, confirmed=False)
+
+        resposta = self.client.post(
+            reverse("accounts:otp_setup"), {"token": codigo_atual(pendente)}
+        )
+
+        codigos = resposta.context["codigos"]
+        self.assertEqual(len(codigos), 10)
+        self.assertIn("no-store", resposta["Cache-Control"])
+        gravados = set(StaticToken.objects.values_list("token", flat=True))
+        self.assertEqual(len(gravados), 10)
+        for codigo in codigos:
+            self.assertContains(resposta, codigo)
+            self.assertNotIn(codigo, gravados)
+            self.assertNotIn(codigo.replace("-", ""), gravados)
+
+    def test_codigo_de_reserva_conclui_a_entrada_uma_vez_so(self):
+        codigo = codigos_reserva.gerar_codigos(self.user)[0]
+
+        resposta = self._entrar_com_reserva(codigo)
+
+        self.assertRedirects(resposta, reverse("accounts:profile"))
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.pk)
+        self.assertEqual(codigos_reserva.restantes(self.user), 9)
+
+        self.client.post(reverse("accounts:logout"))
+        self._entrar_com_reserva(codigo)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_codigo_aceita_minusculas_e_sem_hifen(self):
+        codigo = codigos_reserva.gerar_codigos(self.user)[0]
+
+        self._entrar_com_reserva(codigo.replace("-", "").lower())
+
+        self.assertIn("_auth_user_id", self.client.session)
+
+    def test_codigo_errado_nao_entra_e_fica_na_trilha(self):
+        codigos_reserva.gerar_codigos(self.user)
+
+        resposta = self._entrar_com_reserva("AAAAA-AAAAA")
+
+        self.assertContains(resposta, "inválido ou já usado")
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertTrue(
+            AuthEvent.objects.filter(
+                event=AuthEvent.Event.OTP_FALHOU, detail="codigo de reserva"
+            ).exists()
+        )
+
+    def test_gerar_novos_cancela_os_antigos(self):
+        antigo = codigos_reserva.gerar_codigos(self.user)[0]
+        self._senha()
+        self.client.post(reverse("accounts:otp_verify"), {"token": codigo_atual(self.device)})
+
+        resposta = self.client.post(reverse("accounts:codigos_reserva_novos"))
+
+        self.assertEqual(len(resposta.context["codigos"]), 10)
+        self.assertIsNone(codigos_reserva.usar_codigo(self.user, antigo))
+
+    def test_gerar_novos_exige_sessao_com_segundo_fator(self):
+        self.client.force_login(self.user)
+
+        resposta = self.client.post(reverse("accounts:codigos_reserva_novos"))
+
+        self.assertRedirects(resposta, reverse("accounts:profile"))
+        self.assertEqual(codigos_reserva.restantes(self.user), 0)
+
+    def test_desativar_o_2fa_apaga_os_codigos(self):
+        codigos_reserva.gerar_codigos(self.user)
+        self.client.force_login(self.user)
+
+        self.client.post(reverse("accounts:otp_disable"))
+
+        self.assertEqual(codigos_reserva.restantes(self.user), 0)
+
+    def test_cadastro_de_codigos_estaticos_saiu_do_painel(self):
+        # Pelo painel, alguém da equipe criaria um código para outra conta.
+        self.assertFalse(admin.site.is_registered(StaticDevice))
 
 
 class SessaoTests(TestCase):
@@ -268,6 +441,148 @@ class ForcaBrutaTests(TestCase):
         tentativa = AccessAttempt.objects.first()
         self.assertIsNotNone(tentativa)
         self.assertEqual(tentativa.failures_since_start, settings.AXES_FAILURE_LIMIT)
+
+
+class BloqueioProgressivoTests(TestCase):
+    """Risco R03: o bloqueio do axes dobra quando se repete no mesmo dia."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="repetido@exemplo.com",
+            full_name="Usuario Repetido",
+            password=SENHA,
+        )
+        reset()
+
+    def tearDown(self):
+        reset()
+
+    def _bloquear(self):
+        erradas = {"username": self.user.email, "password": "chute errado"}
+        for _ in range(settings.AXES_FAILURE_LIMIT):
+            self.client.post(reverse("accounts:login"), erradas)
+
+    def _duracao_do_bloqueio(self):
+        tentativa = AccessAttempt.objects.get()
+        return tentativa.expiration.expires_at - tentativa.attempt_time
+
+    def _passar_o_bloqueio(self):
+        # Simula o fim do bloqueio: a tentativa vence, e o bloqueio registrado
+        # na trilha fica no passado, mas dentro das últimas 24 horas.
+        seis_minutos_atras = timezone.now() - timedelta(minutes=6)
+        AccessAttemptExpiration.objects.update(expires_at=seis_minutos_atras)
+        AccessAttempt.objects.update(attempt_time=seis_minutos_atras)
+        AuthEvent.objects.filter(event=AuthEvent.Event.CONTA_BLOQUEADA).update(
+            created_at=seis_minutos_atras
+        )
+
+    def test_primeiro_bloqueio_dura_cinco_minutos(self):
+        self._bloquear()
+
+        self.assertEqual(self._duracao_do_bloqueio(), timedelta(minutes=5))
+
+    def test_segundo_bloqueio_no_mesmo_dia_dura_o_dobro(self):
+        # Antes, todo bloqueio durava 5 minutos, por mais que se repetisse.
+        self._bloquear()
+        self._passar_o_bloqueio()
+
+        self._bloquear()
+
+        self.assertEqual(
+            AuthEvent.objects.filter(event=AuthEvent.Event.CONTA_BLOQUEADA).count(), 2
+        )
+        self.assertEqual(self._duracao_do_bloqueio(), timedelta(minutes=10))
+
+    def test_bloqueio_de_ontem_nao_conta(self):
+        self._bloquear()
+        self._passar_o_bloqueio()
+        AuthEvent.objects.filter(event=AuthEvent.Event.CONTA_BLOQUEADA).update(
+            created_at=timezone.now() - timedelta(hours=25)
+        )
+
+        self._bloquear()
+
+        self.assertEqual(self._duracao_do_bloqueio(), timedelta(minutes=5))
+
+
+@override_settings(
+    LIMITES_DE_REQUISICAO={
+        "login": {"por_ip": "3/m", "total": "100/m"},
+        "otp": {"por_ip": "3/m", "total": "100/m"},
+        "cadastro": {"por_ip": "3/m", "total": "100/m"},
+        "recuperacao": {"por_ip": "3/m", "total": "100/m"},
+    }
+)
+class LimiteDeRequisicoesTests(TestCase):
+    """Risco R03: limite por endereço e no total nas telas caras."""
+
+    def setUp(self):
+        reset()
+
+    def tearDown(self):
+        reset()
+
+    def _tentar_login(self, numero, ip="10.0.0.1"):
+        # Um e-mail diferente a cada vez: o axes, que bloqueia por conta e
+        # endereço, nunca chega ao limite. É o padrão do password spraying.
+        return self.client.post(
+            reverse("accounts:login"),
+            {"username": f"pessoa{numero}@exemplo.com", "password": "Senha2026comum"},
+            REMOTE_ADDR=ip,
+        )
+
+    def test_mesmo_ip_em_muitas_contas_e_recusado(self):
+        for numero in range(3):
+            self.assertEqual(self._tentar_login(numero).status_code, 200)
+
+        resposta = self._tentar_login(3)
+
+        self.assertEqual(resposta.status_code, 429)
+        self.assertTemplateUsed(resposta, "accounts/limite_excedido.html")
+
+    def test_outro_ip_nao_e_afetado_pelo_limite_do_primeiro(self):
+        for numero in range(4):
+            self._tentar_login(numero, ip="10.0.0.1")
+
+        self.assertEqual(self._tentar_login(9, ip="10.0.0.2").status_code, 200)
+
+    @override_settings(
+        LIMITES_DE_REQUISICAO={"login": {"por_ip": "100/m", "total": "3/m"}}
+    )
+    def test_limite_total_vale_para_muitos_ips(self):
+        for numero in range(3):
+            self._tentar_login(numero, ip=f"10.0.1.{numero}")
+
+        resposta = self._tentar_login(3, ip="10.0.1.200")
+
+        self.assertEqual(resposta.status_code, 429)
+
+    def test_abrir_a_pagina_nao_conta(self):
+        for _ in range(10):
+            self.assertEqual(self.client.get(reverse("accounts:login")).status_code, 200)
+
+    def test_cadastro_recuperacao_e_codigo_tambem_tem_limite(self):
+        for nome in ("accounts:register", "accounts:password_reset", "accounts:otp_verify"):
+            with self.subTest(tela=nome):
+                for _ in range(3):
+                    self.client.post(reverse(nome), {}, REMOTE_ADDR="10.0.2.1")
+                resposta = self.client.post(reverse(nome), {}, REMOTE_ADDR="10.0.2.1")
+                self.assertEqual(resposta.status_code, 429)
+
+    def test_diagnostico_do_proxy_so_registra_quando_ligado(self):
+        with self.assertNoLogs("apps.accounts.limites", level="INFO"):
+            self._tentar_login(0)
+
+        with override_settings(DIAGNOSTICO_PROXY=True):
+            with self.assertLogs("apps.accounts.limites", level="INFO") as registro:
+                self.client.post(
+                    reverse("accounts:login"),
+                    {"username": "a@exemplo.com", "password": "x"},
+                    REMOTE_ADDR="10.0.3.1",
+                    HTTP_X_FORWARDED_FOR="200.1.2.3",
+                )
+
+        self.assertIn("x_forwarded_for=200.1.2.3", registro.output[0])
 
 
 class CadastroTests(TestCase):

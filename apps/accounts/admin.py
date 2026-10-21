@@ -8,6 +8,7 @@ dispositivos 2FA de todas as contas.
 from django.contrib import admin, messages
 from django.shortcuts import redirect
 from django_otp.admin import OTPAdminSite
+from django_otp.plugins.otp_static.models import StaticDevice
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
 
@@ -47,3 +48,9 @@ class PainelComDoisFatores(OTPAdminSite):
 # dispositivos são criados só pela tela de ativação do 2FA.
 if admin.site.is_registered(TOTPDevice):
     admin.site.unregister(TOTPDevice)
+
+# Pelo cadastro de códigos estáticos, qualquer pessoa da equipe criaria um
+# código de reserva para outra conta e entraria nela sem o celular. Os códigos
+# são gerados só pela própria pessoa, no perfil (apps/accounts/codigos_reserva.py).
+if admin.site.is_registered(StaticDevice):
+    admin.site.unregister(StaticDevice)

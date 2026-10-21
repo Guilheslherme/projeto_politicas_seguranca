@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Códigos de reserva{% endblock %}
+
+{% block content %}
+<div class="card card-narrow">
+  <h1>Guarde seus códigos de reserva</h1>
+
+  <p>
+    Se perder o celular, use um destes códigos no lugar do código de 6 dígitos.
+    Cada um vale <strong>uma vez só</strong>.
+  </p>
+
+  <ul class="mono">
+    {% for codigo in codigos %}
+      <li>{{ codigo }}</li>
+    {% endfor %}
+  </ul>
+
+  <p class="muted small">
+    Esta é a única vez que eles aparecem: não guardamos uma cópia legível.
+    Anote em papel ou num gerenciador de senhas. Gerar novos códigos no perfil
+    cancela estes.
+  </p>
+
+  <a class="btn-primary block" href="{% url 'accounts:profile' %}">Já guardei, continuar</a>
+</div>
+{% endblock %}

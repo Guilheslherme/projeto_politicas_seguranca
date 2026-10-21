@@ -79,7 +79,6 @@ py -3.12 -m venv .venv
 .venv\Scripts\activate.bat
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py createsuperuser
 python manage.py runserver
 ```
 
@@ -88,6 +87,8 @@ O site abre em http://127.0.0.1:8000.
 Falta uma coisa antes de rodar: copiar o `.env.example` para `.env` e preencher. Esse arquivo tem a chave do Django e a senha do banco, então ele não vai para o repositório. Cada um do grupo tem o seu, e o certificado do banco também fica de fora.
 
 O `migrate` já cria o acervo inicial: dez sintomas, quatro condições e cinco materiais do Ministério da Saúde e da OPAS/OMS. Conteúdo novo é cadastrado pelo painel, em `/admin/`.
+
+O painel só abre para a equipe, e conta da equipe sem verificação em duas etapas não entra no site. Para ter acesso: crie a conta pelo cadastro, ative o 2FA no perfil e rode `python manage.py promover_equipe seu@email.com --superusuario`. O `createsuperuser` cria uma conta sem 2FA, que não conseguiria entrar.
 
 ## Segurança
 

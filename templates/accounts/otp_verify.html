@@ -23,6 +23,16 @@
     modo automático &mdash; a verificação depende do relógio.
   </p>
 
+  <details{% if reserva_aberta %} open{% endif %}>
+    <summary>Estou sem o celular</summary>
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {{ form_reserva.codigo_reserva }}
+      {{ form_reserva.codigo_reserva.errors }}
+      <button type="submit" class="btn-primary block">Entrar com código de reserva</button>
+    </form>
+  </details>
+
   <p class="muted small">
     Esta etapa protege sua conta: mesmo quem souber sua senha não consegue
     entrar sem o código do seu celular.

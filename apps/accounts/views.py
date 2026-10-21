@@ -14,6 +14,7 @@ from django.db import transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from django_otp import login as otp_login
 
@@ -25,8 +26,11 @@ from apps.audit.models import AuthEvent, PasswordResetLog
 from apps.audit.signals import registrar_evento
 from apps.privacy.models import ConsentRecord
 
+from . import codigos_reserva
 from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
+from .limites import limitar
 from .forms import (
+    CodigoReservaForm,
     EmailAuthenticationForm,
     NewPasswordForm,
     OTPTokenForm,
@@ -68,6 +72,7 @@ def _build_qr_data_uri(config_url):
     return f"data:image/png;base64,{encoded}"
 
 
+@limitar("cadastro")
 def register_view(request):
     form = RegistrationForm(request.POST or None)
 
@@ -89,6 +94,7 @@ def register_view(request):
     return render(request, "accounts/register.html", {"form": form})
 
 
+@method_decorator(limitar("login"), name="dispatch")
 class TwoFactorLoginView(LoginView):
     """Etapa 1: e-mail e senha."""
 
@@ -109,7 +115,36 @@ class TwoFactorLoginView(LoginView):
             self.request.session[PENDING_TIME_KEY] = timezone.now().isoformat()
             return redirect("accounts:otp_verify")
 
+        if user.is_staff:
+            # Risco R05: conta da equipe sem 2FA não entra. Se entrasse, quem
+            # tivesse só a senha poderia ativar o 2FA no próprio celular e
+            # abrir o painel administrativo.
+            registrar_evento(
+                self.request,
+                AuthEvent.Event.LOGIN_FALHOU,
+                user=user,
+                detail="conta da equipe sem 2FA: entrada recusada",
+            )
+            form.add_error(
+                None,
+                "Contas da equipe só entram com a verificação em duas etapas "
+                "ativa. Fale com quem administra o projeto.",
+            )
+            return self.form_invalid(form)
+
+        primeiro_login = user.last_login is None
         auth_login(self.request, user)
+
+        if primeiro_login:
+            # Convite no primeiro acesso: a pessoa cai direto na tela de
+            # ativação, que tem a opção de deixar para depois.
+            messages.info(
+                self.request,
+                "Bem-vindo! Proteja sua conta com a verificação em duas etapas: "
+                "leva um minuto.",
+            )
+            return redirect("accounts:otp_setup")
+
         messages.info(
             self.request,
             "Sua conta ainda não tem verificação em duas etapas. "
@@ -118,6 +153,7 @@ class TwoFactorLoginView(LoginView):
         return redirect("accounts:profile")
 
 
+@limitar("otp")
 def otp_verify(request):
     """Etapa 2: código de 6 dígitos. Só aqui a sessão é criada."""
     user_id = request.session.get(PENDING_USER_KEY)
@@ -138,20 +174,30 @@ def otp_verify(request):
         _clear_pending(request)
         return redirect("accounts:login")
 
-    form = OTPTokenForm(request.POST or None)
+    usando_reserva = request.method == "POST" and "codigo_reserva" in request.POST
+    form = OTPTokenForm(request.POST if request.method == "POST" and not usando_reserva else None)
+    form_reserva = CodigoReservaForm(request.POST if usando_reserva else None)
 
-    if request.method == "POST" and form.is_valid():
+    if usando_reserva and form_reserva.is_valid():
+        # Risco R05: quem perdeu o celular entra com um dos códigos de
+        # reserva, que vale uma vez só e é apagado aqui mesmo.
+        device = codigos_reserva.usar_codigo(user, form_reserva.cleaned_data["codigo_reserva"])
+        if device is not None:
+            _concluir_login(request, user, device, detalhe="codigo de reserva")
+            messages.warning(
+                request,
+                f"Você entrou com um código de reserva. Restam "
+                f"{codigos_reserva.restantes(user)}. Gere novos no seu perfil "
+                "se estiver acabando.",
+            )
+            return redirect("accounts:profile")
+        registrar_evento(request, AuthEvent.Event.OTP_FALHOU, user=user, detail="codigo de reserva")
+        form_reserva.add_error("codigo_reserva", "Código de reserva inválido ou já usado.")
+
+    elif request.method == "POST" and form.is_valid():
         device = EncryptedTOTPDevice.objects.filter(user=user, confirmed=True).first()
         if device and device.verify_token(form.cleaned_data["token"]):
-            backend = request.session.get(PENDING_BACKEND_KEY)
-            _clear_pending(request)
-            auth_login(request, user, backend=backend)
-            otp_login(request, device)
-
-            # Depois do auth_login, então a trilha mostra a ordem real dos
-            # fatos: a sessão nasce e em seguida o segundo fator é confirmado
-            # nela. O LOGIN_OK logo antes deste registro vem do sinal.
-            registrar_evento(request, AuthEvent.Event.OTP_OK, user=user)
+            _concluir_login(request, user, device)
             return redirect("accounts:profile")
 
         # Requisito 5.2. Aqui não existe sinal do Django para aproveitar: a
@@ -164,8 +210,26 @@ def otp_verify(request):
     return render(
         request,
         "accounts/otp_verify.html",
-        {"form": form, "email": _mascarar_email(user.email)},
+        {
+            "form": form,
+            "form_reserva": form_reserva,
+            "reserva_aberta": usando_reserva,
+            "email": _mascarar_email(user.email),
+        },
     )
+
+
+def _concluir_login(request, user, device, detalhe=""):
+    """Cria a sessão depois do segundo fator, por código TOTP ou de reserva."""
+    backend = request.session.get(PENDING_BACKEND_KEY)
+    _clear_pending(request)
+    auth_login(request, user, backend=backend)
+    otp_login(request, device)
+
+    # Depois do auth_login, então a trilha mostra a ordem real dos fatos: a
+    # sessão nasce e em seguida o segundo fator é confirmado nela. O LOGIN_OK
+    # logo antes deste registro vem do sinal.
+    registrar_evento(request, AuthEvent.Event.OTP_OK, user=user, detail=detalhe)
 
 
 @login_required
@@ -188,7 +252,7 @@ def otp_setup(request):
             otp_login(request, device)
             registrar_evento(request, AuthEvent.Event.OTP_ATIVADO, user=request.user)
             messages.success(request, "Verificação em duas etapas ativada.")
-            return redirect("accounts:profile")
+            return _mostrar_codigos_reserva(request)
         form.add_error("token", "Código inválido. Confira o horário do seu celular.")
 
     return render(
@@ -202,10 +266,42 @@ def otp_setup(request):
     )
 
 
+def _mostrar_codigos_reserva(request):
+    """Gera os códigos de reserva e mostra a lista, uma única vez.
+
+    A resposta não é redirecionada nem guardada: os códigos só existem nesta
+    página, e o never_cache das views que chamam impede que o navegador ou um
+    proxy guardem uma cópia dela.
+    """
+    return render(
+        request,
+        "accounts/codigos_reserva.html",
+        {"codigos": codigos_reserva.gerar_codigos(request.user)},
+    )
+
+
+@login_required
+@never_cache
+def codigos_reserva_novos(request):
+    """Troca os códigos de reserva por novos (os antigos deixam de valer)."""
+    if request.method != "POST":
+        return redirect("accounts:profile")
+
+    # Os códigos abrem a conta sem o celular, então gerá-los exige o mesmo que
+    # entrar nela: 2FA ativo e uma sessão que passou pelo segundo fator.
+    tem_2fa = EncryptedTOTPDevice.objects.filter(user=request.user, confirmed=True).exists()
+    if not (tem_2fa and request.user.is_verified()):
+        messages.error(request, "Ative a verificação em duas etapas para gerar códigos de reserva.")
+        return redirect("accounts:profile")
+
+    return _mostrar_codigos_reserva(request)
+
+
 @login_required
 def otp_disable(request):
     if request.method == "POST":
         EncryptedTOTPDevice.objects.filter(user=request.user).delete()
+        codigos_reserva.apagar_codigos(request.user)
         request.user.two_factor_enabled = False
         request.user.save(update_fields=["two_factor_enabled"])
 
@@ -232,6 +328,7 @@ def profile(request):
             # cifrado em si não vai para a tela.
             "totp_secret_format": device.key.split("$")[0] if device else "",
             "is_verified": request.user.is_verified(),
+            "codigos_restantes": codigos_reserva.restantes(request.user),
         },
     )
 
@@ -286,6 +383,7 @@ def _excedeu_o_limite_de_pedidos(user):
     return anteriores >= settings.PASSWORD_RESET_MAX_REQUESTS
 
 
+@limitar("recuperacao")
 def password_reset_request(request):
     """Etapa 1: a pessoa informa o e-mail e recebe o link."""
     form = PasswordResetRequestForm(request.POST or None)

@@ -43,6 +43,19 @@ class OTPTokenForm(forms.Form):
         return token
 
 
+class CodigoReservaForm(forms.Form):
+    """Código de reserva, para quem está sem o celular (risco R05)."""
+
+    # "ABCDE-FGHJK": 10 símbolos, com ou sem o hífen e os espaços.
+    codigo_reserva = forms.CharField(
+        label="Código de reserva",
+        max_length=16,
+        widget=forms.TextInput(
+            attrs={"autocomplete": "off", "autocapitalize": "characters", "placeholder": "ABCDE-FGHJK"}
+        ),
+    )
+
+
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.urls import reverse
