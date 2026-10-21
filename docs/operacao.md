@@ -113,6 +113,12 @@ Uma vez por mês, ou depois de mudar o backup:
 5. Anote a data e quanto tempo levou, apague o `.sql` e o banco `restauracao`.
    O `.sql` tem dados pessoais em texto puro.
 
+Registro dos testes:
+
+| Data | Backup | Resultado | Tempo |
+|---|---|---|---|
+| 21/10/2026 | `health-in-sight-20261021-0314.sql.enc` (103 KB) | 29 tabelas restauradas no MySQL 8.3 do WAMP; contas, dispositivos 2FA, eventos de auditoria, logs de recuperação e consentimentos com as mesmas quantidades da produção; `verificar_logs` com a cadeia íntegra (99 registros); segredos do 2FA decifrados com a FIELD_ENCRYPTION_KEY do cofre | cerca de 4 minutos |
+
 ### 4.4 Cofre do grupo
 
 A `FIELD_ENCRYPTION_KEY` e a `BACKUP_KEY` ficam num cofre compartilhado de
