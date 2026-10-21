@@ -27,7 +27,7 @@ from apps.audit.models import AuthEvent, PasswordResetLog
 from apps.privacy.models import ConsentRecord
 
 from . import codigos_reserva
-from .crypto import FalhaNaDecifragem, cifrar, decifrar
+from .crypto import FalhaNaDecifragem, cifrar, decifrar, precisa_recifrar
 from .emails import FalhaNoEnvio, enviar_link_de_recuperacao
 from .models import EmailConfirmationToken, EncryptedTOTPDevice, PasswordResetToken
 
@@ -1217,6 +1217,86 @@ class RecuperacaoDeSenhaTests(TestCase):
         # sinaliza a existência do controle para quem procura brecha.
         self.assertNotContains(resposta, "proposital")
         self.assertNotContains(resposta, "descobrir quem tem conta")
+
+
+class TrocaDeChavesTests(TestCase):
+    """Risco R02: trocar as chaves sem perder segredos, sessões nem códigos."""
+
+    CHAVE_ANTIGA = b"a" * 32
+    CHAVE_NOVA = b"n" * 32
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="troca@exemplo.com", full_name="Pessoa Da Troca", password=SENHA
+        )
+        ConsentRecord.registrar_aceite(self.user)
+        reset()
+
+    def test_valor_cifrado_com_a_chave_antiga_continua_legivel(self):
+        with override_settings(FIELD_ENCRYPTION_KEY=self.CHAVE_ANTIGA):
+            valor = cifrar(b"segredo", "contexto")
+
+        with override_settings(
+            FIELD_ENCRYPTION_KEY=self.CHAVE_NOVA, FIELD_ENCRYPTION_OLD_KEYS=[self.CHAVE_ANTIGA]
+        ):
+            self.assertEqual(decifrar(valor, "contexto"), b"segredo")
+            self.assertTrue(precisa_recifrar(valor))
+            self.assertFalse(precisa_recifrar(cifrar(b"segredo", "contexto")))
+
+    def test_sem_a_chave_antiga_o_valor_nao_e_lido(self):
+        with override_settings(FIELD_ENCRYPTION_KEY=self.CHAVE_ANTIGA):
+            valor = cifrar(b"segredo", "contexto")
+
+        with override_settings(FIELD_ENCRYPTION_KEY=self.CHAVE_NOVA, FIELD_ENCRYPTION_OLD_KEYS=[]):
+            with self.assertRaises(FalhaNaDecifragem):
+                decifrar(valor, "contexto")
+
+    def test_valor_gravado_antes_do_id_da_chave_continua_legivel(self):
+        # Os segredos já gravados em produção não têm o id da chave.
+        with override_settings(FIELD_ENCRYPTION_KEY=self.CHAVE_ANTIGA):
+            valor = cifrar(b"segredo", "contexto")
+        prefixo, _id, corpo = valor.split("$")
+        antigo = f"{prefixo}${corpo}"
+
+        with override_settings(
+            FIELD_ENCRYPTION_KEY=self.CHAVE_NOVA, FIELD_ENCRYPTION_OLD_KEYS=[self.CHAVE_ANTIGA]
+        ):
+            self.assertEqual(decifrar(antigo, "contexto"), b"segredo")
+            self.assertTrue(precisa_recifrar(antigo))
+
+    def test_login_passa_o_segredo_do_2fa_para_a_chave_nova(self):
+        with override_settings(FIELD_ENCRYPTION_KEY=self.CHAVE_ANTIGA):
+            device = EncryptedTOTPDevice.objects.create(
+                user=self.user, name="celular", confirmed=True
+            )
+            codigo = codigo_atual(device)
+
+        with override_settings(
+            FIELD_ENCRYPTION_KEY=self.CHAVE_NOVA, FIELD_ENCRYPTION_OLD_KEYS=[self.CHAVE_ANTIGA]
+        ):
+            self.client.post(
+                reverse("accounts:login"), {"username": self.user.email, "password": SENHA}
+            )
+            self.client.post(reverse("accounts:otp_verify"), {"token": codigo})
+
+            self.assertIn("_auth_user_id", self.client.session)
+            device.refresh_from_db()
+            self.assertFalse(precisa_recifrar(device.key))
+
+        # Depois disso, a chave antiga já não é necessária.
+        with override_settings(FIELD_ENCRYPTION_KEY=self.CHAVE_NOVA, FIELD_ENCRYPTION_OLD_KEYS=[]):
+            device.refresh_from_db()
+            self.assertEqual(len(device.bin_key), 20)
+
+    def test_codigo_de_reserva_vale_depois_da_troca_da_secret_key(self):
+        with override_settings(SECRET_KEY="chave-antiga-" + "x" * 40):
+            codigo = codigos_reserva.gerar_codigos(self.user)[0]
+
+        with override_settings(
+            SECRET_KEY="chave-nova-" + "y" * 40,
+            SECRET_KEY_FALLBACKS=["chave-antiga-" + "x" * 40],
+        ):
+            self.assertIsNotNone(codigos_reserva.usar_codigo(self.user, codigo))
 
 
 class CriptografiaEmRepousoTests(TestCase):

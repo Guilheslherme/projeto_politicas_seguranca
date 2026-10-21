@@ -8,7 +8,7 @@ from django.db import models
 from django.utils import timezone
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
-from .crypto import cifrar, decifrar, esta_cifrado
+from .crypto import cifrar, decifrar, esta_cifrado, precisa_recifrar
 from .managers import UserManager
 
 
@@ -322,3 +322,16 @@ class EncryptedTOTPDevice(TOTPDevice):
         que todo o resto da biblioteca funcione sem saber que existe cifragem.
         """
         return decifrar(self.key, contexto_do_segredo_2fa(self.user_id))
+
+    def recifrar_se_preciso(self):
+        """Cifra o segredo de novo com a chave atual, se ele usa uma antiga.
+
+        Chamado no login, depois do código conferido: é assim que, depois de
+        uma troca da FIELD_ENCRYPTION_KEY, os segredos passam para a chave nova
+        sem ninguém precisar ativar o 2FA de novo (risco R02).
+        """
+        if not precisa_recifrar(self.key):
+            return False
+        self.key = cifrar(self.bin_key, contexto_do_segredo_2fa(self.user_id))
+        super().save(update_fields=["key"])
+        return True

@@ -1,6 +1,7 @@
 """Criptografia (requisitos 3.4 a 3.6)."""
 
 import base64
+import hashlib
 import os
 
 from cryptography.exceptions import InvalidTag
@@ -15,6 +16,24 @@ PREFIXO = "aes256gcm$"
 
 # 96 bits, o tamanho de nonce recomendado para o GCM pela NIST SP 800-38D.
 TAMANHO_DO_NONCE = 12
+
+
+def id_da_chave(chave):
+    """Identificador curto da chave, gravado junto do valor cifrado (R02).
+
+    Permite trocar a chave sem perder o que já foi gravado: cada valor diz com
+    qual chave foi cifrado, e a leitura escolhe a chave certa. São os primeiros
+    4 caracteres do SHA-256 da chave, que não ajudam a descobrir a chave. Só 4
+    porque o campo do django-otp aceita 80 caracteres e o valor cifrado do
+    segredo já ocupa 74. O settings recusa uma chave antiga com o mesmo id da
+    atual, para a escolha nunca ficar ambígua.
+    """
+    return hashlib.sha256(chave).hexdigest()[:4]
+
+
+def _chaves():
+    """A chave atual primeiro, depois as antigas que ainda podem ser lidas."""
+    return [settings.FIELD_ENCRYPTION_KEY, *getattr(settings, "FIELD_ENCRYPTION_OLD_KEYS", [])]
 
 
 class FalhaNaDecifragem(Exception):
@@ -43,13 +62,30 @@ def cifrar(dados, contexto):
     # mesma chave é catastrófico: expõe a diferença entre os textos e permite
     # forjar a autenticação. Por isso ele nunca é derivado de nada previsível.
     nonce = os.urandom(TAMANHO_DO_NONCE)
-    cifrado = AESGCM(settings.FIELD_ENCRYPTION_KEY).encrypt(
-        nonce, dados, contexto.encode("utf-8")
-    )
+    chave = settings.FIELD_ENCRYPTION_KEY
+    cifrado = AESGCM(chave).encrypt(nonce, dados, contexto.encode("utf-8"))
     # O nonce precisa ser guardado junto para permitir decifrar, e pode ficar
     # às claras: a segurança depende da chave, não do nonce.
     corpo = base64.urlsafe_b64encode(nonce + cifrado).decode("ascii").rstrip("=")
-    return PREFIXO + corpo
+    # Formato: aes256gcm$<id da chave>$<nonce e texto cifrado>.
+    return f"{PREFIXO}{id_da_chave(chave)}${corpo}"
+
+
+def _partes(valor):
+    """Separa o id da chave e o corpo. Valores gravados antes da troca de
+    chave não têm id: aes256gcm$<corpo>."""
+    resto = valor[len(PREFIXO):]
+    # O base64 urlsafe não usa "$", então o separador não se confunde.
+    if "$" in resto:
+        id_gravado, corpo = resto.split("$", 1)
+        return id_gravado, corpo
+    return None, resto
+
+
+def precisa_recifrar(valor):
+    """Diz se o valor foi cifrado com outra chave que não a atual."""
+    id_gravado, _ = _partes(valor)
+    return id_gravado != id_da_chave(settings.FIELD_ENCRYPTION_KEY)
 
 
 def decifrar(valor, contexto):
@@ -60,17 +96,20 @@ def decifrar(valor, contexto):
         # cifrado por um conhecido.
         raise FalhaNaDecifragem("o valor nao esta no formato cifrado")
 
-    corpo = valor[len(PREFIXO):]
+    id_gravado, corpo = _partes(valor)
     # O base64 perde o preenchimento "=" na gravação; aqui ele é recomposto.
     bruto = base64.urlsafe_b64decode(corpo + "=" * (-len(corpo) % 4))
     nonce, cifrado = bruto[:TAMANHO_DO_NONCE], bruto[TAMANHO_DO_NONCE:]
 
-    try:
-        # O GCM confere a etiqueta de autenticação antes de devolver qualquer
-        # byte. Um valor alterado no banco não é decifrado "quase certo": é
-        # recusado inteiro.
-        return AESGCM(settings.FIELD_ENCRYPTION_KEY).decrypt(
-            nonce, cifrado, contexto.encode("utf-8")
-        )
-    except InvalidTag as erro:
-        raise FalhaNaDecifragem("chave, contexto ou valor cifrado nao conferem") from erro
+    # Com o id, só a chave certa é tentada. Sem ele (valor antigo), cada chave
+    # conhecida é tentada, a atual primeiro.
+    candidatas = [c for c in _chaves() if id_gravado in (None, id_da_chave(c))]
+    for chave in candidatas:
+        try:
+            # O GCM confere a etiqueta de autenticação antes de devolver
+            # qualquer byte. Um valor alterado no banco não é decifrado "quase
+            # certo": é recusado inteiro.
+            return AESGCM(chave).decrypt(nonce, cifrado, contexto.encode("utf-8"))
+        except InvalidTag:
+            continue
+    raise FalhaNaDecifragem("chave, contexto ou valor cifrado nao conferem")

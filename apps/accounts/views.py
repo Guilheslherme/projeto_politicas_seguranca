@@ -304,6 +304,8 @@ def _concluir_login(request, user, device, detalhe=""):
     _clear_pending(request)
     auth_login(request, user, backend=backend)
     otp_login(request, device)
+    if isinstance(device, EncryptedTOTPDevice):
+        device.recifrar_se_preciso()
 
     # Depois do auth_login, então a trilha mostra a ordem real dos fatos: a
     # sessão nasce e em seguida o segundo fator é confirmado nela. O LOGIN_OK

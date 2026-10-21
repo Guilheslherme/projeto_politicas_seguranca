@@ -9,6 +9,7 @@ de gerado.
 
 import secrets
 
+from django.conf import settings
 from django.db import transaction
 from django.utils.crypto import salted_hmac
 from django_otp.plugins.otp_static.models import StaticDevice
@@ -27,12 +28,18 @@ def _normalizar(codigo):
     return codigo.replace("-", "").replace(" ", "").upper()
 
 
-def _resumo(codigo):
+def _resumo(codigo, chave=None):
     # O campo token do django-otp aceita 16 caracteres: os primeiros 64 bits
     # do HMAC-SHA256. Sem a SECRET_KEY, o resumo não ajuda a achar o código.
     return salted_hmac(
-        "apps.accounts.codigos_reserva", _normalizar(codigo), algorithm="sha256"
+        "apps.accounts.codigos_reserva", _normalizar(codigo), secret=chave, algorithm="sha256"
     ).hexdigest()[:16]
+
+
+def _resumos_aceitos(codigo):
+    # Depois de uma troca da SECRET_KEY, os códigos gerados com a antiga
+    # continuam valendo pelas SECRET_KEY_FALLBACKS (risco R02).
+    return [_resumo(codigo)] + [_resumo(codigo, antiga) for antiga in settings.SECRET_KEY_FALLBACKS]
 
 
 def _novo_codigo():
@@ -65,7 +72,7 @@ def usar_codigo(user, codigo):
     device = StaticDevice.objects.filter(user=user, name=NOME_DO_DISPOSITIVO).first()
     if device is None:
         return None
-    apagados, _ = device.token_set.filter(token=_resumo(codigo)).delete()
+    apagados, _ = device.token_set.filter(token__in=_resumos_aceitos(codigo)).delete()
     return device if apagados else None
 
 

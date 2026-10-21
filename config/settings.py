@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import base64
 import binascii
+import hashlib
 import os
 import sys
 from datetime import timedelta
@@ -41,6 +42,15 @@ if not SECRET_KEY:
     if not DEBUG and "test" not in sys.argv:
         raise ImproperlyConfigured("DJANGO_SECRET_KEY nao definida no ambiente.")
     SECRET_KEY = "minha chave gerada para desenvolvimento"
+
+# Chaves anteriores, separadas por vírgula, aceitas só para conferir o que já
+# foi assinado (risco R02). Trocar a DJANGO_SECRET_KEY sem isto derrubaria
+# todas as sessões abertas e invalidaria os códigos de reserva do 2FA.
+SECRET_KEY_FALLBACKS = [
+    chave.strip()
+    for chave in os.environ.get("DJANGO_SECRET_KEY_FALLBACKS", "").split(",")
+    if chave.strip()
+]
 
 # Endereços que a aplicação aceita atender, separados por vírgula na variável
 # de ambiente. Publicar em outro domínio passa a ser mudança de configuração no
@@ -294,6 +304,30 @@ else:
             "FIELD_ENCRYPTION_KEY ausente ou invalida: precisa ter 32 bytes em "
             "base64. Veja o .env.example para gerar uma."
         )
+
+# Troca de chave sem perder os segredos já gravados (risco R02). As chaves
+# antigas, separadas por vírgula, só servem para ler: tudo o que é cifrado usa
+# a FIELD_ENCRYPTION_KEY atual, e cada segredo é cifrado de novo com ela no
+# próximo login da conta. Depois que todos tiverem entrado, a antiga sai daqui.
+FIELD_ENCRYPTION_OLD_KEYS = []
+if "test" not in sys.argv:
+    for antiga in os.environ.get("FIELD_ENCRYPTION_OLD_KEYS", "").split(","):
+        if not antiga.strip():
+            continue
+        try:
+            decodificada = base64.urlsafe_b64decode(antiga.strip())
+        except (binascii.Error, ValueError):
+            decodificada = b""
+        if len(decodificada) != 32:
+            raise ImproperlyConfigured("FIELD_ENCRYPTION_OLD_KEYS tem uma chave invalida.")
+        # Cada valor cifrado grava os 4 primeiros caracteres do SHA-256 da
+        # chave (apps/accounts/crypto.py). Se a antiga coincidir com a atual
+        # nesses 4, não daria para saber qual usar: basta gerar outra chave.
+        if hashlib.sha256(decodificada).hexdigest()[:4] == hashlib.sha256(FIELD_ENCRYPTION_KEY).hexdigest()[:4]:
+            raise ImproperlyConfigured(
+                "A FIELD_ENCRYPTION_KEY nova tem o mesmo identificador de uma antiga. Gere outra."
+            )
+        FIELD_ENCRYPTION_OLD_KEYS.append(decodificada)
 
 
 # ---------------------------------------------------------------------------
