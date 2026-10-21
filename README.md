@@ -128,7 +128,7 @@ Cadastro, login, logout, verificação em duas etapas com QR Code, bloqueio por 
 São **146 testes automatizados**. Para rodar todos:
 
 ```bash
-python manage.py test apps
+python manage.py test apps config
 ```
 
 Os testes usam um banco SQLite temporário, em memória, então não encostam no servidor do Aiven.

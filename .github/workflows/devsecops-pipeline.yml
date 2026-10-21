@@ -6,7 +6,54 @@ on:
   pull_request:
     branches: ["main"]
 
+# Cada job recebe só a permissão de leitura do código; quem precisa de mais
+# (o CodeQL) pede no próprio job. As actions ficam presas pelo SHA do commit,
+# com a versão no comentário: uma tag como @main ou @v4 pode ser movida para
+# outro código sem ninguém perceber, um SHA não (risco R11).
+permissions:
+  contents: read
+
 jobs:
+  # ─────────────────────────────────────────────
+  # JOB 0: Testes automatizados e check --deploy
+  # ─────────────────────────────────────────────
+  tests:
+    name: "🧪 Testes e check --deploy"
+    runs-on: ubuntu-latest
+    env:
+      # As configurações de produção: HTTPS, cookies seguros e HSTS ligados.
+      DJANGO_DEBUG: "0"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install system packages for mysqlclient
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libmysqlclient-dev
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        # SQLite em memória e chave AES sorteada: nada encosta no Aiven.
+        run: python manage.py test apps config
+
+      - name: Run check --deploy
+        # Chaves descartáveis, geradas aqui, só para a checagem rodar. O
+        # certificado falso basta porque o check não abre conexão com o banco.
+        run: |
+          export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(50))')"
+          export FIELD_ENCRYPTION_KEY="$(python -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
+          export ALLOWED_HOSTS="health-in-sight.onrender.com"
+          export DB_SSL_CA="certs/ci.pem"
+          touch certs/ci.pem
+          python manage.py check --deploy --fail-level WARNING
+
   # ─────────────────────────────────────────────
   # JOB 1: Varredura de Segredos com TruffleHog
   # ─────────────────────────────────────────────
@@ -15,12 +62,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0  # histórico completo para o TruffleHog varrer todos os commits
 
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@e63326d6545de8f425d93ce24078c6e68d83f70e # v3.99.3
         with:
           path: ./
           # Sem base/head explícito: a action lê github.event.before e github.sha
@@ -36,10 +83,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Run Trivy on requirements.txt
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: fs          # varredura no sistema de arquivos (detecta requirements.txt)
           scan-ref: .
@@ -62,19 +109,19 @@ jobs:
       security-events: write  # necessário para publicar alertas na aba Security do GitHub
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
         with:
           languages: python
           # Queries de segurança e qualidade para Python
           queries: security-and-quality
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
         with:
           category: /language:python

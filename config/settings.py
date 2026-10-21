@@ -20,6 +20,8 @@ from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
+from config.banco import opcoes_de_tls
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -140,9 +142,15 @@ DATABASES = {
     }
 }
 
-DB_SSL_CA = os.environ.get("DB_SSL_CA", "")
-if DB_SSL_CA:
-    DATABASES["default"]["OPTIONS"]["ssl"] = {"ca": str(BASE_DIR / DB_SSL_CA)}
+# Conexão cifrada que confere o certificado e o nome do servidor (risco R09).
+# Em produção, sem DB_SSL_CA a aplicação não sobe. Regras em config/banco.py.
+DATABASES["default"]["OPTIONS"].update(
+    opcoes_de_tls(
+        os.environ.get("DB_SSL_CA", ""),
+        BASE_DIR,
+        producao=not DEBUG and "test" not in sys.argv,
+    )
+)
 
 # Os testes usam um banco temporário em memória, para não criar nem apagar
 # nada no servidor do Aiven.
@@ -490,3 +498,16 @@ if not DEBUG:
     # A requisição chega pelo proxy do Render. Sem isto o axes leria o endereço
     # do proxy e bloquearia todos os usuários de uma vez.
     AXES_IPWARE_PROXY_COUNT = 1
+
+# Os testes rodam com as configurações de produção (DJANGO_DEBUG=0 no CI), com
+# duas exceções que só existem aqui, porque "test" está no comando:
+# - o cliente de teste do Django fala HTTP, e o redirecionamento para HTTPS
+#   responderia 301 a tudo. Os testes que conferem o redirecionamento ligam a
+#   opção de novo com override_settings;
+# - o manifesto dos arquivos estáticos só existe depois do collectstatic, que
+#   os testes não rodam.
+# Em produção nada muda: o "manage.py check --deploy" do CI confere isso com
+# as configurações reais.
+if "test" in sys.argv:
+    SECURE_SSL_REDIRECT = False
+    STORAGES["staticfiles"]["BACKEND"] = "django.contrib.staticfiles.storage.StaticFilesStorage"
