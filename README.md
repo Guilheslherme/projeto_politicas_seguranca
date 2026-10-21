@@ -125,7 +125,7 @@ Pelo menu "Meus dados", quem tem conta pode:
 
 Cadastro, login, logout, verificação em duas etapas com QR Code, bloqueio por tentativas, recuperação de senha por e-mail, as telas de exercício dos direitos da LGPD, a trilha de auditoria encadeada, o filtro de sintomas com o desvio de alerta, as páginas de condição e o guardar material com consentimento por finalidade.
 
-São **146 testes automatizados**. Para rodar todos:
+São **162 testes automatizados**. Para rodar todos:
 
 ```bash
 python manage.py test apps config
@@ -138,6 +138,13 @@ Dois comandos completam a parte de auditoria:
 ```bash
 python manage.py verificar_logs              # confere a corrente de hashes
 python manage.py analisar_logs --horas 24    # resume a trilha do período
+```
+
+E dois para a continuidade, com o passo a passo em [docs/operacao.md](docs/operacao.md), junto da troca de segredos e das configurações do Render e do Aiven:
+
+```bash
+python manage.py backup_cifrado              # backup do banco cifrado com a BACKUP_KEY
+python manage.py restaurar_backup <arquivo>  # decifra o backup para o teste de restauração
 ```
 
 ## O que ainda falta

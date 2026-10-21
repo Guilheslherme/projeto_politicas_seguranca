@@ -22,3 +22,6 @@ logs/
 .idea/
 .DS_Store
 Thumbs.db
+# Backups do banco (cifrados ou não) nunca vão para o repositório
+backups/
+*.sql

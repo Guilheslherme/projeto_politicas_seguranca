@@ -20,6 +20,7 @@ from django.urls import include, path
 from django.views.generic import TemplateView
 
 from apps.accounts.admin import PainelComDoisFatores
+from config.saude import saude
 
 # Troca a classe do admin padrão em vez de criar outro: os modelos registrados
 # com @admin.register continuam no mesmo painel, que passa a exigir o código
@@ -29,6 +30,7 @@ admin.site.__class__ = PainelComDoisFatores
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", TemplateView.as_view(template_name="home.html"), name="home"),
+    path("saude/", saude, name="saude"),
     path("conta/", include("apps.accounts.urls")),
     path("privacidade/", include("apps.privacy.urls")),
 
