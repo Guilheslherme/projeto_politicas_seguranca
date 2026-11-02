@@ -150,6 +150,8 @@ button, .btn-primary, .btn-danger {
 .btn-danger { background: var(--danger); color: #fff; }
 .block { display: block; width: 100%; margin-top: 1.2rem; }
 .inline-form { display: inline; }
+.acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
+.acoes button, .acoes a { line-height: 1.4; }
 
 .messages { list-style: none; padding: 0; }
 .message {
