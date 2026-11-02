@@ -8,11 +8,13 @@
     Tudo o que o Health In Sight guarda sobre a sua conta, conforme o Art. 18 da LGPD.
   </p>
 
-  <form method="post" action="{% url 'privacy:export_data' %}" class="inline-form">
-    {% csrf_token %}
-    <button type="submit" class="btn-primary">Exportar em JSON</button>
-  </form>
-  <a class="btn-danger" href="{% url 'privacy:delete_account' %}">Revogar consentimento e excluir conta</a>
+  <div class="acoes">
+    <form method="post" action="{% url 'privacy:export_data' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-primary">Exportar em JSON</button>
+    </form>
+    <a class="btn-danger" href="{% url 'privacy:delete_account' %}">Revogar consentimento e excluir conta</a>
+  </div>
 </div>
 
 <div class="card">
