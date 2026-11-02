@@ -10,7 +10,7 @@ django-otp==1.7.0
 django-ratelimit==4.1.0
 gunicorn==26.2.0
 mysqlclient==2.2.8
-pillow==12.3.0
+pillow==13.0.0
 pycparser==3.0
 python-dotenv==1.2.3
 qrcode==8.2
