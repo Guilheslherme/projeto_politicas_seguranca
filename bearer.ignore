@@ -1,0 +1,27 @@
+{
+  "0eb86b0b3f6be7582be0fb62de5f4eec_0": {
+    "comment": "restaurar_backup.py: o arquivo lido é o que o operador informa no próprio terminal (manage.py restaurar_backup). Nenhum dado vindo do site chega a este caminho.",
+    "false_positive": true,
+    "ignored_at": "2026-11-14T00:26:18Z"
+  },
+  "0eb86b0b3f6be7582be0fb62de5f4eec_1": {
+    "comment": "restaurar_backup.py: o destino do SQL é escolhido pelo operador no próprio terminal (--saida). Nenhum dado vindo do site chega a este caminho.",
+    "false_positive": true,
+    "ignored_at": "2026-11-14T00:26:18Z"
+  },
+  "a23903eebfe0c9549bff1b403f5711b4_0": {
+    "comment": "backup_cifrado.py: comando de administração que só roda no terminal de quem administra o sistema. O subprocess recebe uma lista, sem shell, e os argumentos vêm da configuração do próprio operador. Nenhum dado vindo do site chega ao comando.",
+    "false_positive": true,
+    "ignored_at": "2026-11-14T00:26:18Z"
+  },
+  "decd9425fe2b8d86e3c6c390b6a934c5_0": {
+    "comment": "backup_cifrado.py: a pasta de destino do backup é escolhida pelo operador no próprio terminal (--saida). Nenhum dado vindo do site chega a este caminho.",
+    "false_positive": true,
+    "ignored_at": "2026-11-14T00:26:18Z"
+  },
+  "decd9425fe2b8d86e3c6c390b6a934c5_1": {
+    "comment": "backup_cifrado.py: o arquivo de destino do backup é escolhido pelo operador no próprio terminal (--saida). Nenhum dado vindo do site chega a este caminho.",
+    "false_positive": true,
+    "ignored_at": "2026-11-14T00:26:18Z"
+  }
+}

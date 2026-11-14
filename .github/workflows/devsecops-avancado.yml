@@ -140,6 +140,8 @@ jobs:
       - name: Privacy report (personal data inventory)
         run: bearer scan . --report privacy --format html --output bearer-privacidade.html --hide-progress-bar
 
+      # Achados analisados pelo grupo e aceitos como falso positivo ficam no
+      # bearer.ignore, cada um com a justificativa. Os demais continuam valendo.
       - name: Security scan (fails on critical findings)
         run: bearer scan . --report security --fail-on-severity critical --hide-progress-bar
 
