@@ -1,0 +1,194 @@
+name: DevSecOps Avançado
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+# Só leitura do código por padrão. As actions ficam presas pelo SHA do commit,
+# com a versão no comentário, como no devsecops-pipeline.yml.
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────
+  # JOB 1: DAST com OWASP ZAP
+  # Sobe o site no próprio runner, com a configuração de produção, e ataca a
+  # aplicação em execução (XSS, injeções, cabeçalhos de segurança).
+  # ─────────────────────────────────────────────
+  dast-zap:
+    name: "🕷️ DAST (OWASP ZAP)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # Produção (HTTPS, cookies seguros, HSTS, CSP), com banco SQLite
+      # descartável e sem envio de e-mail: veja config/settings_dast.py.
+      DJANGO_SETTINGS_MODULE: config.settings_dast
+      DJANGO_DEBUG: "0"
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      # A configuração de produção exige o certificado do banco para subir. O
+      # arquivo é vazio porque o scan usa SQLite e nunca abre conexão MySQL.
+      DB_SSL_CA: certs/dast.pem
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install system packages for mysqlclient
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libmysqlclient-dev
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Prepare the application
+        run: |
+          # Chaves descartáveis, sorteadas a cada execução e escondidas do log.
+          SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(50))')"
+          AES="$(python -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
+          echo "::add-mask::$SECRET"
+          echo "::add-mask::$AES"
+          echo "DJANGO_SECRET_KEY=$SECRET" >> "$GITHUB_ENV"
+          echo "FIELD_ENCRYPTION_KEY=$AES" >> "$GITHUB_ENV"
+          export DJANGO_SECRET_KEY="$SECRET" FIELD_ENCRYPTION_KEY="$AES"
+          touch "$DB_SSL_CA"
+          python manage.py migrate --noinput
+          python manage.py collectstatic --noinput
+          # Certificado autoassinado: o site responde só em HTTPS, como no Render.
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=localhost" \
+            -keyout "$RUNNER_TEMP/dast.key" -out "$RUNNER_TEMP/dast.crt"
+
+      - name: Start the application (HTTPS, port 8443)
+        run: |
+          nohup gunicorn config.wsgi:application --bind 127.0.0.1:8443 --workers 2 \
+            --certfile "$RUNNER_TEMP/dast.crt" --keyfile "$RUNNER_TEMP/dast.key" \
+            > "$RUNNER_TEMP/app.log" 2>&1 &
+          for tentativa in $(seq 1 30); do
+            if curl -fsk https://localhost:8443/saude/; then echo; exit 0; fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/app.log"
+          exit 1
+
+      - name: Run OWASP ZAP full scan
+        uses: zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c # v0.13.0
+        with:
+          target: "https://localhost:8443/"
+          # As regras de injeção e XSS do .zap/rules.tsv estão como FAIL. Com
+          # -I, alertas de nível WARN não derrubam o job: só as falhas críticas.
+          rules_file_name: ".zap/rules.tsv"
+          cmd_options: '-I -m 2 -z "-config scanner.maxScanDurationInMins=15"'
+          fail_action: true
+          allow_issue_writing: false
+          artifact_name: relatorio-zap
+
+      - name: Block on any high-risk alert
+        if: always()
+        run: |
+          python - <<'EOF'
+          import json, pathlib, sys
+          relatorio = pathlib.Path("report_json.json")
+          if not relatorio.exists():
+              sys.exit("O ZAP não gerou o relatório: o scan não terminou.")
+          alertas = [a for site in json.loads(relatorio.read_text())["site"] for a in site["alerts"]]
+          nomes = {"3": "Alto", "2": "Médio", "1": "Baixo", "0": "Informativo"}
+          for risco in ("3", "2", "1", "0"):
+              do_nivel = [a["name"] for a in alertas if a["riskcode"] == risco]
+              print(f"{nomes[risco]}: {len(do_nivel)}", *(f"  - {n}" for n in do_nivel), sep="\n")
+          if any(a["riskcode"] == "3" for a in alertas):
+              sys.exit("Bloqueado: o ZAP encontrou alerta de risco Alto.")
+          EOF
+
+      - name: Show application log
+        if: failure()
+        run: cat "$RUNNER_TEMP/app.log"
+
+  # ─────────────────────────────────────────────
+  # JOB 2: Privacidade e dados sensíveis (LGPD) com Bearer
+  # Procura no código vazamento de dados pessoais (PII) e falhas de segurança
+  # ligadas a eles, e gera o inventário dos dados pessoais tratados.
+  # ─────────────────────────────────────────────
+  privacy-bearer:
+    name: "🔒 Privacidade e LGPD (Bearer)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BEARER_VERSION: "2.1.3"
+      BEARER_SHA256: "974d4ad7bb71bc578675684d444e345e8fbad91c85557aac035406ef5cc04c68"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # A action oficial baixa o instalador da branch main do Bearer a cada
+      # execução. Aqui a versão é fixa e o arquivo só é usado se o SHA-256
+      # bater com o publicado no release.
+      - name: Install Bearer (pinned version, checksum verified)
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/bearer.tar.gz" \
+            "https://github.com/Bearer/bearer/releases/download/v${BEARER_VERSION}/bearer_${BEARER_VERSION}_linux_amd64.tar.gz"
+          echo "${BEARER_SHA256}  $RUNNER_TEMP/bearer.tar.gz" | sha256sum --check -
+          mkdir -p "$RUNNER_TEMP/bearer"
+          tar -xzf "$RUNNER_TEMP/bearer.tar.gz" -C "$RUNNER_TEMP/bearer"
+          dirname "$(find "$RUNNER_TEMP/bearer" -type f -name bearer | head -1)" >> "$GITHUB_PATH"
+
+      - name: Privacy report (personal data inventory)
+        run: bearer scan . --report privacy --format html --output bearer-privacidade.html --hide-progress-bar
+
+      - name: Security scan (fails on critical findings)
+        run: bearer scan . --report security --fail-on-severity critical --hide-progress-bar
+
+      - name: Upload privacy report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: relatorio-privacidade-bearer
+          path: bearer-privacidade.html
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────
+  # JOB 3: SBOM (Software Bill of Materials) com Trivy
+  # Lista todas as dependências e versões do software no formato CycloneDX e
+  # publica o arquivo como artefato da execução.
+  # ─────────────────────────────────────────────
+  sbom-trivy:
+    name: "📋 SBOM CycloneDX (Trivy)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Generate SBOM (CycloneDX)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: cyclonedx
+          output: sbom.json
+
+      - name: Show SBOM summary
+        run: |
+          python - <<'EOF'
+          import json
+          sbom = json.load(open("sbom.json"))
+          componentes = [c for c in sbom.get("components", []) if c.get("type") == "library"]
+          print(f"Formato: {sbom['bomFormat']} {sbom['specVersion']}")
+          print(f"Dependências listadas: {len(componentes)}")
+          for c in sorted(componentes, key=lambda c: c["name"].lower()):
+              print(f"  - {c['name']} {c.get('version', '?')}")
+          if not componentes:
+              raise SystemExit("O SBOM saiu sem nenhuma dependência.")
+          EOF
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-cyclonedx
+          path: sbom.json
+          if-no-files-found: error
