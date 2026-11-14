@@ -514,7 +514,11 @@ def password_reset_request(request):
                 request,
                 PasswordResetLog.Event.LIMITE_EXCEDIDO,
                 user,
-                detail=f"acima de {settings.PASSWORD_RESET_MAX_REQUESTS} pedidos na janela",
+                # Texto fixo: o CodeQL trata como senha qualquer valor com
+                # "password" no nome, e o número vindo de
+                # PASSWORD_RESET_MAX_REQUESTS gerava um alerta falso de senha
+                # gravada no log (py/clear-text-logging-sensitive-data).
+                detail="acima do limite de pedidos na janela",
             )
         elif user is not None:
             _, token_puro = PasswordResetToken.emitir(

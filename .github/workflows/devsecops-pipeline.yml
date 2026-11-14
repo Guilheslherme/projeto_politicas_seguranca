@@ -125,3 +125,32 @@ jobs:
         uses: github/codeql-action/analyze@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
         with:
           category: /language:python
+          output: sarif-results  # guarda o resultado para o passo de bloqueio abaixo
+
+      # O CodeQL só publica os alertas na aba Security e termina com sucesso.
+      # Este passo lê o mesmo resultado e derruba o job (exit code 1) quando
+      # há alerta de severidade ALTA ou CRÍTICA (security-severity >= 7.0).
+      - name: Block on high or critical alerts
+        run: |
+          python - <<'EOF'
+          import json, pathlib, sys
+          bloqueantes = []
+          for arquivo in pathlib.Path("sarif-results").glob("*.sarif"):
+              for run in json.loads(arquivo.read_text())["runs"]:
+                  componentes = [run["tool"]["driver"], *run["tool"].get("extensions", [])]
+                  severidade = {
+                      regra["id"]: float(regra.get("properties", {}).get("security-severity", 0))
+                      for componente in componentes
+                      for regra in componente.get("rules", [])
+                  }
+                  for resultado in run["results"]:
+                      nota = severidade.get(resultado["ruleId"], 0)
+                      local = resultado["locations"][0]["physicalLocation"]
+                      linha = f'{local["artifactLocation"]["uri"]}:{local["region"]["startLine"]}'
+                      print(f'{nota:4.1f}  {resultado["ruleId"]}  {linha}')
+                      if nota >= 7.0:
+                          bloqueantes.append(linha)
+          if bloqueantes:
+              sys.exit(f"Bloqueado: {len(bloqueantes)} alerta(s) de severidade ALTA ou CRÍTICA no CodeQL.")
+          print("Nenhum alerta de severidade ALTA ou CRÍTICA.")
+          EOF
